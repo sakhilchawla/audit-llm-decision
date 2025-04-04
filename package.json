@@ -1,16 +1,19 @@
 {
-  "name": "mcp-explainability-server",
+  "name": "@dosafeai/mcp-llm-audit",
   "version": "1.0.0",
-  "description": "Model Control Plane server for AI decision audit trails",
+  "description": "Model Control Plane LLM Audit Server for AI decision trails",
   "main": "dist/server.js",
+  "bin": {
+    "mcp-llm-audit": "./dist/server.js"
+  },
   "scripts": {
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
     "build": "tsc",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
-    "docker:build": "docker build -t mcp-server .",
-    "docker:run": "docker run -p 4000:4000 mcp-server"
+    "docker:build": "docker build -t mcp-llm-audit .",
+    "docker:run": "docker run -p 4000:4000 mcp-llm-audit"
   },
   "dependencies": {
     "express": "^4.17.1",

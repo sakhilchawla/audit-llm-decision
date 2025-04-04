@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import express from 'express';
 import { AuditTrailController } from './controllers/AuditTrailController';
 import { AuditTrailRepository } from './repositories/AuditTrailRepository';
@@ -51,7 +52,7 @@ async function startServer() {
   app.use(errorHandler);
 
   app.listen(PORT, () => {
-    console.log(`MCP Explainability Server running on port ${PORT}`);
+    console.log(`MCP LLM Audit Server running on port ${PORT}`);
   });
 }
 

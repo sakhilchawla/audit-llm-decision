@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  mcp-server:
+  mcp-llm-audit:
     build: .
     ports:
       - "4000:4000"
