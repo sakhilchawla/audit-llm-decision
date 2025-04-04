@@ -44,6 +44,7 @@ async function startServer() {
   apiRouter.post('/audit-trail', validateAuditTrail, auditTrailController.create.bind(auditTrailController));
   apiRouter.get('/audit-trail/:id', auditTrailController.getById.bind(auditTrailController));
   apiRouter.get('/audit-trail/model/:modelVersion', auditTrailController.getByModel.bind(auditTrailController));
+  apiRouter.post('/claude/interaction', auditTrailController.createClaudeInteraction.bind(auditTrailController));
 
   // Mount API router with version prefix
   app.use('/api/v1', apiRouter);
