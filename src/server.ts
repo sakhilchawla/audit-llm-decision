@@ -134,8 +134,7 @@ const handleMcpProtocol = () => {
   const interval = setInterval(() => {
     const now = Date.now();
     if (now - lastHeartbeat > 60000) {
-      mcpLog('info', 'No heartbeat received in 60 seconds, shutting down...');
-      cleanup();
+      mcpLog('info', 'No heartbeat received in 60 seconds, but keeping server alive');
     }
   }, 30000);
 
