@@ -37,7 +37,7 @@ psql -h localhost -U postgres -d llm_audit
 
 ```bash
 # Run directly without installation
-npx @audit-llm/server "postgresql://postgres:password@localhost:5432/llm_audit?application_name=local_test" 4000
+npx @audit-llm/server@latest "postgresql://postgres:password@localhost:5432/llm_audit?application_name=local_test" 4000
 ```
 
 Note: The `application_name` parameter in the connection string is important for tracking database connections.
@@ -93,7 +93,8 @@ Note: Make sure to:
     "audit-llm": {
       "command": "npx",
       "args": [
-        "@audit-llm/server",
+        "--yes",
+        "@audit-llm/server@latest",
         "postgresql://postgres:password@localhost:5432/llm_audit?application_name=cursor_mcp",
         "4000"
       ],
@@ -118,7 +119,7 @@ Note: Make sure to:
       "command": "npx",
       "args": [
         "--yes",
-        "@audit-llm/server@1.0.10",
+        "@audit-llm/server@latest",
         "postgresql://postgres:password@localhost:5432/llm_audit?application_name=claude_desktop",
         "4000"
       ],
