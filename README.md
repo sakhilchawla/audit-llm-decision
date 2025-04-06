@@ -1,144 +1,189 @@
-# MCP LLM Audit Server
+# MCP Logging Server
 
-A server for storing and serving LLM decision audit trails, acting like a black-box flight recorder for AI systems.
+A robust logging server for tracking and auditing AI model interactions. Built with Node.js, TypeScript, and PostgreSQL.
+
+## Features
+
+- Automatic logging of AI model interactions
+- Structured storage of model inferences and decision paths
+- RESTful API endpoints for logging and retrieval
+- Configurable database settings via environment variables
+- Health check endpoints for monitoring
+- Production-ready with error handling and validation
 
 ## Quick Start
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+> **🤖 AI Models**: For quick integration instructions, see [MODEL_INSTRUCTIONS.md](MODEL_INSTRUCTIONS.md)
 
-2. **Set up environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your PostgreSQL credentials
-   ```
+1. **Clone and Install**
+```bash
+git clone https://github.com/yourusername/mcp-logging-server.git
+cd mcp-logging-server
+npm install
+```
 
-3. **Run locally:**
-   ```bash
-   npm run dev
-   ```
+2. **Configure Environment**
+Copy `.env.example` to `.env` and set your values:
+```bash
+cp .env.example .env
+```
+
+Required environment variables:
+```
+# Server Configuration
+PORT=4000
+NODE_ENV=development
+
+# Database Configuration
+DB_USER=your_user
+DB_PASSWORD=your_password
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=mcp_audit
+DB_SSL=false
+DB_SSL_REJECT_UNAUTHORIZED=true
+DB_MAX_POOL_SIZE=20
+DB_IDLE_TIMEOUT=10000
+DB_CONNECTION_TIMEOUT=0
+DB_APPLICATION_NAME="mcp_logger"
+DB_SCHEMA="public"
+
+# Security Configuration
+RATE_LIMIT_WINDOW_MS=900000  # 15 minutes
+RATE_LIMIT_MAX_REQUESTS=100
+CORS_ORIGIN="*"              # Set to specific origins in production
+CORS_METHODS="GET,POST"
+```
+
+3. **Start the Server**
+```bash
+# Development
+npm run dev
+
+# Production
+npm run build
+npm start
+```
 
 ## API Endpoints
 
-### Create Audit Trail
+### Log Interaction
 ```bash
-POST /api/v1/audit-trail
+POST /api/v1/log
+Content-Type: application/json
 
 {
-  "modelVersion": "loan-model-v1",
-  "featureSet": "credit-risk-features",
-  "features": [
-    {
-      "name": "age_bucket",
-      "value": 3,
-      "impact": 0.4
-    }
-  ],
-  "decisionPath": [
-    {
-      "stepType": "feature",
-      "description": "Age bucket 3 indicates medium risk",
-      "confidence": 0.8
-    }
-  ],
-  "finalDecision": "Reject loan",
-  "confidence": 0.85
-}
-```
-
-### Get Audit Trail
-```bash
-GET /api/v1/audit-trail/:id
-GET /api/v1/audit-trail/model/:modelVersion
-```
-
-### Claude Interaction Logging
-#### Create Claude Interaction
-```bash
-POST /api/v1/claude/interaction
-
-{
-  "prompt": "What is AI?",
-  "response": "AI is...",
-  "modelVersion": "claude-3-opus",
+  "prompt": "user question",
+  "response": "model response",
+  "modelType": "model name",
+  "modelVersion": "version",
+  "inferences": {
+    // reasoning process
+  },
+  "decisionPath": {
+    // steps taken
+  },
+  "finalDecision": "action taken",
+  "confidence": 0.95,
   "metadata": {
-    "client": "cursor",
-    "sessionId": "user-session-id"
+    // additional context
   }
 }
 ```
 
-## Docker
-
-To run the server using Docker, use the following command:
+### Retrieve Logs
 ```bash
-docker-compose up -d
+GET /api/v1/logs?modelType=model-name&limit=10
 ```
 
-## Environment Variables
+### Health Check
 ```bash
-PORT=4000
-DB_USER=postgres
-DB_HOST=localhost
-DB_NAME=mcp_audit
-DB_PASSWORD=your_password
-DB_PORT=5432
-DB_SSL=false
+GET /health
 ```
 
-## Claude Client Integration
+## Deployment
 
-### Cursor Integration
-```typescript
-// In your Cursor plugin/extension
-async function logClaudeInteraction(prompt: string, response: string) {
-  await fetch('http://localhost:4000/api/v1/claude/interaction', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      prompt,
-      response,
-      modelVersion: 'claude-3-opus',
-      metadata: {
-        client: 'cursor',
-        sessionId: 'user-session-id'
-      }
-    })
-  });
-}
-
-// Use in your Claude interaction handler
-onClaudeResponse(async (prompt, response) => {
-  await logClaudeInteraction(prompt, response);
-});
+### Local Development
+```bash
+npm run dev
 ```
 
-### Claude Desktop Integration
-```typescript
-// In your Claude Desktop app
-const logInteraction = async (prompt: string, response: string) => {
-  await fetch('http://localhost:4000/api/v1/claude/interaction', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      prompt,
-      response,
-      modelVersion: 'claude-3-opus',
-      metadata: {
-        client: 'claude-desktop',
-        userId: 'user-id'
-      }
-    })
-  });
-};
+### Docker Deployment
+1. Build the image:
+   ```bash
+   docker build -t mcp-logging-server .
+   ```
+2. Run with Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
+
+### Cloud Deployment
+
+#### Prerequisites
+- PostgreSQL database
+- Node.js 16+ environment
+- Environment variables configured
+
+#### Steps
+1. Set up environment variables for production
+2. Install dependencies:
+   ```bash
+   npm ci --production
+   ```
+3. Build the TypeScript code:
+   ```bash
+   npm run build
+   ```
+4. Start the server:
+   ```bash
+   npm start
+   ```
+
+#### Cloud Platform Specific
+
+##### Heroku
+```bash
+git push heroku main
 ```
 
-## Conclusion
+##### AWS Elastic Beanstalk
+```bash
+eb deploy
+```
 
-This README provides all the necessary information to set up, run, and integrate the MCP LLM Audit Server with various clients. If you have any questions or need further assistance, feel free to reach out!
+##### Google Cloud Run
+```bash
+gcloud run deploy
+```
+
+## Monitoring
+
+- Health endpoint: `GET /health`
+- Database connection status
+- Server logs with configurable levels
+- Error tracking
+- Rate limit monitoring
+- Connection pool metrics
+
+## Security
+
+- Input validation using express-validator
+- SQL injection protection with parameterized queries
+- Rate limiting (configurable via environment variables)
+- CORS protection (configurable via environment variables)
+- Error handling with sanitized responses
+- SSL/TLS support for database connections
+- Secure headers with helmet.js
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

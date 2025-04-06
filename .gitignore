@@ -1,3 +1,65 @@
+# Dependencies
 node_modules/
+package-lock.json
+
+# Build output
 dist/
+build/
+*.tsbuildinfo
+
+# Environment variables
 .env
+.env.local
+.env.*.local
+.env.test
+.env.production
+.env.development
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Docker volumes
+docker-volumes/
+data/
+
+# System Files
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug files
+debug/
+*.debug
+
+# Misc
+*.bak
+*.cache
+.eslintcache
+.node_repl_history
