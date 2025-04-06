@@ -1,6 +1,11 @@
 import { setupTestDatabase } from '../../scripts/setup-test-db';
 import { initDB } from '../../src/server';
 import { pool } from '../../src/db';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load test environment variables
+dotenv.config({ path: path.join(__dirname, 'test.env') });
 
 let isPoolClosed = false;
 

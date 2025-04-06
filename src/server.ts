@@ -6,11 +6,43 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { AuditTrailController } from './controllers/AuditTrailController';
 import { HealthController } from './controllers/HealthController';
+import { SchemaController } from './controllers/SchemaController';
 import { pool, testConnection } from './db';
 import dotenv from 'dotenv';
+import { URL } from 'url';
 
 // Load environment variables
 dotenv.config();
+
+// Parse connection string and port from CLI args if provided
+const connectionString = process.argv[2];
+const portArg = process.argv[3];
+
+// Only require connection string in CLI mode
+if (require.main === module && !connectionString && !process.env.DB_URL) {
+  console.error('Usage: audit-llm-server postgresql://user:password@host:port/database [port]');
+  process.exit(1);
+}
+
+// Parse connection string if provided
+if (connectionString) {
+  try {
+    const dbUrl = new URL(connectionString);
+    process.env.DB_USER = dbUrl.username;
+    process.env.DB_PASSWORD = dbUrl.password;
+    process.env.DB_HOST = dbUrl.hostname;
+    process.env.DB_PORT = dbUrl.port;
+    process.env.DB_NAME = dbUrl.pathname.slice(1); // Remove leading '/'
+  } catch (err: any) {
+    console.error('Invalid connection string:', err.message);
+    process.exit(1);
+  }
+}
+
+// Set port from command line if provided
+if (portArg) {
+  process.env.PORT = portArg;
+}
 
 console.log('Starting server with environment:', process.env.NODE_ENV);
 console.log('Database configuration:', {
@@ -45,9 +77,10 @@ app.use(compression());
 app.use(limiter);
 
 // Routes
+app.get('/schema', SchemaController.getSchema);
+app.get('/health', HealthController.check);
 app.post('/api/v1/log', AuditTrailController.logInteraction);
 app.get('/api/v1/logs', AuditTrailController.getLogs);
-app.get('/health', HealthController.check);
 
 export const initDB = async (): Promise<void> => {
   try {
@@ -108,7 +141,7 @@ export const stopServer = async (): Promise<void> => {
   }
 };
 
-export const startServer = async (port: number = Number(process.env.PORT) || 4000): Promise<void> => {
+export const startServer = async (port: number = Number(process.env.PORT) || 4001): Promise<void> => {
   try {
     console.log('Starting server initialization...');
     await initDB();
