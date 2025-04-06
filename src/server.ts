@@ -20,16 +20,14 @@ const __dirname = dirname(__filename);
 dotenv.config();
 
 // Set default NODE_ENV if not set
-if (!process.env.NODE_ENV) {
-  process.env.NODE_ENV = 'production';
-}
+process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
 // Parse connection string and port from CLI args if provided
 const connectionString = process.argv[2];
 const portArg = process.argv[3];
 
-// Check if running as main module (works in both ESM and CJS)
-const isMainModule = process.argv[1]?.endsWith('server.js') || process.argv[1]?.endsWith('server.ts');
+// Check if running directly (via node/npx) or as a module
+const isMainModule = process.argv[1]?.includes('server') || process.argv[1]?.includes('@audit-llm/server');
 
 // Only require connection string in CLI mode
 if (isMainModule && !connectionString && !process.env.DB_URL) {
@@ -44,7 +42,7 @@ if (connectionString) {
     process.env.DB_USER = dbUrl.username;
     process.env.DB_PASSWORD = dbUrl.password;
     process.env.DB_HOST = dbUrl.hostname;
-    process.env.DB_PORT = dbUrl.port;
+    process.env.DB_PORT = dbUrl.port || '5432';
     process.env.DB_NAME = dbUrl.pathname.slice(1); // Remove leading '/'
     
     // Parse application_name from search params
@@ -52,6 +50,8 @@ if (connectionString) {
     const appName = params.get('application_name');
     if (appName) {
       process.env.DB_APPLICATION_NAME = appName;
+    } else {
+      process.env.DB_APPLICATION_NAME = 'audit_llm_server';
     }
   } catch (err: any) {
     console.error('Invalid connection string:', err.message);
