@@ -1,8 +1,9 @@
 {
   "name": "@audit-llm/server",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "description": "Model Context Protocol (MCP) server for auditing and logging LLM interactions",
   "main": "dist/server.js",
+  "type": "module",
   "bin": {
     "audit-llm-server": "./dist/server.js"
   },
@@ -13,14 +14,11 @@
   ],
   "scripts": {
     "build": "tsc",
-    "dev": "ts-node src/server.ts",
+    "dev": "ts-node --esm src/server.ts",
     "start": "node dist/server.js",
     "test": "jest",
     "lint": "eslint src/**/*.ts tests/**/*.ts --no-warn-ignored",
-    "prepare": "npm run build",
-    "prepublishOnly": "npm test && npm run lint",
-    "preversion": "npm run lint",
-    "postversion": "git push && git push --tags"
+    "prepare": "npm run build"
   },
   "publishConfig": {
     "access": "public"
@@ -40,15 +38,15 @@
   "author": "Sakhil Chawla",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sakhilchawla/audit-mcp-server.git"
+    "url": "git+https://github.com/sakhilchawla/audit-llm-decision.git"
   },
   "bugs": {
-    "url": "https://github.com/sakhilchawla/audit-mcp-server/issues"
+    "url": "https://github.com/sakhilchawla/audit-llm-decision/issues"
   },
-  "homepage": "https://github.com/sakhilchawla/audit-mcp-server#readme",
+  "homepage": "https://github.com/sakhilchawla/audit-llm-decision#readme",
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=16.0.0"
   },
   "dependencies": {
     "@types/uuid": "^9.0.8",
@@ -67,6 +65,7 @@
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.11.24",
+    "@types/node-fetch": "^2.6.12",
     "@types/pg": "^8.11.2",
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",

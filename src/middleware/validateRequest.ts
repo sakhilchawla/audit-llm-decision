@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError } from './errorHandler';
+import { AppError } from './errorHandler.js';
 
 export interface ValidationSchema {
   required?: string[];

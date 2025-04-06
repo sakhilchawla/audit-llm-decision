@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { pool } from '../db';
+import { pool } from '../db.js';
 
 export class HealthController {
   public static async check(req: Request, res: Response): Promise<void> {

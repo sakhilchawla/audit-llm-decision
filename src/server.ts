@@ -4,12 +4,17 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
-import { AuditTrailController } from './controllers/AuditTrailController';
-import { HealthController } from './controllers/HealthController';
-import { SchemaController } from './controllers/SchemaController';
-import { pool, testConnection } from './db';
+import { AuditTrailController } from './controllers/AuditTrailController.js';
+import { HealthController } from './controllers/HealthController.js';
+import { SchemaController } from './controllers/SchemaController.js';
+import { pool, testConnection } from './db.js';
 import dotenv from 'dotenv';
-import { URL } from 'url';
+import { URL, fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Get current file path in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Load environment variables
 dotenv.config();
@@ -18,8 +23,11 @@ dotenv.config();
 const connectionString = process.argv[2];
 const portArg = process.argv[3];
 
+// Check if running as main module (works in both ESM and CJS)
+const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
+
 // Only require connection string in CLI mode
-if (require.main === module && !connectionString && !process.env.DB_URL) {
+if (isMainModule && !connectionString && !process.env.DB_URL) {
   console.error('Usage: audit-llm-server postgresql://user:password@host:port/database [port]');
   process.exit(1);
 }
@@ -180,7 +188,7 @@ export const startServer = async (port: number = Number(process.env.PORT) || 400
 };
 
 // Start the server if this file is run directly
-if (require.main === module) {
+if (isMainModule) {
   console.log(`Starting server in ${process.env.NODE_ENV} mode...`);
   startServer().catch((error) => {
     console.error('Server startup failed:', error);

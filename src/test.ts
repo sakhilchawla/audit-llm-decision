@@ -1,11 +1,12 @@
-const fetch = require('node-fetch');
+import nodeFetch from 'node-fetch';
+import { Response } from 'node-fetch';
 
 async function testModelLogging() {
   const baseUrl = 'http://localhost:4000';
 
   // Helper function to log interaction
   async function logInteraction(data: any) {
-    const response = await fetch(`${baseUrl}/api/v1/log`, {
+    const response = await nodeFetch(`${baseUrl}/api/v1/log`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -60,7 +61,7 @@ async function testModelLogging() {
 
     // Fetch and display logs
     console.log('\nFetching recent logs:');
-    const logsResponse = await fetch(`${baseUrl}/api/v1/logs?limit=5`);
+    const logsResponse = await nodeFetch(`${baseUrl}/api/v1/logs?limit=5`);
     const logs = await logsResponse.json();
     console.log(JSON.stringify(logs, null, 2));
   } catch (error) {

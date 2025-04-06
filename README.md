@@ -13,67 +13,58 @@ A Model Context Protocol (MCP) server for auditing and logging LLM interactions.
 - Support for multiple deployment methods
 - Comprehensive error handling
 
-## Quick Start
+## Prerequisites
 
-### Prerequisites
-
-- Node.js (v18 or higher)
+- Node.js (v16 or higher)
 - PostgreSQL (v14 or higher)
 - npm or yarn
-- Docker (optional)
 
-### Installation Methods
+## Quick Start Guide
 
-#### 1. NPX Installation (Recommended for MCP usage)
+### 1. Database Setup
 
-Run directly without installation:
 ```bash
-# Default port 4000
-npx @audit-llm/server postgresql://user:password@host:5432/llm_audit
+# Create database
+createdb llm_audit
 
-# Custom port
-npx @audit-llm/server postgresql://user:password@host:5432/llm_audit 4001
+# Verify connection
+psql -h localhost -U postgres -d llm_audit
 ```
 
-#### 2. Global Installation
+### 2. Installation & Usage
+
+#### Option A: NPX (Recommended)
+
+```bash
+# Run directly without installation
+npx @audit-llm/server postgresql://postgres:password@localhost:5432/llm_audit 4000
+```
+
+#### Option B: Global Installation
 
 ```bash
 # Install globally
 npm install -g @audit-llm/server
 
 # Run server
-audit-llm-server postgresql://user:password@host:5432/llm_audit [port]
+audit-llm-server postgresql://postgres:password@localhost:5432/llm_audit 4000
 ```
 
-#### 3. Docker Installation
+### 3. Integration with AI Tools
 
-```bash
-# Build the image
-docker build -t audit-llm/server .
+#### Cursor Integration
 
-# Run the container
-docker run -i --rm -p 4000:4000 audit-llm/server postgresql://user:password@host:5432/llm_audit
-```
-
-## Claude Desktop Integration
-
-### 1. Create Configuration File
-
-Create or edit `claude_desktop_config.json`:
-
-**MacOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
-
-### 2. Add MCP Server Configuration
-
+1. Create or edit `~/.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
     "audit-llm": {
       "command": "npx",
       "args": [
+        "--yes",
         "@audit-llm/server",
-        "postgresql://postgres:password@localhost:5432/llm_audit"
+        "postgresql://postgres:password@localhost:5432/llm_audit",
+        "4000"
       ],
       "env": {
         "NODE_ENV": "production"
@@ -83,45 +74,21 @@ Create or edit `claude_desktop_config.json`:
 }
 ```
 
-### 3. Verify Database Setup
+2. Restart Cursor to apply changes
 
-```bash
-# Create database if not exists
-createdb llm_audit
+#### Claude Desktop Integration
 
-# Test connection
-psql -h localhost -U postgres -d llm_audit
-```
-
-### 4. Restart Claude Desktop
-
-After configuring, restart Claude Desktop to apply changes.
-
-### 5. Verify Integration
-
-1. Open Claude Desktop
-2. Check console for server startup messages
-3. Make a test query - you should see interaction logs in your database
-
-## Cursor Integration
-
-### 1. Create MCP Config
-
-Create or edit `mcp.json`:
-
-**MacOS**: `/Users/your-username/.cursor/mcp.json`
-**Windows**: `C:\Users\your-username\.cursor\mcp.json`
-
-### 2. Add Server Configuration
-
+1. Create or edit `~/Library/Application Support/Claude/claude_desktop_config.json` (MacOS) or `%APPDATA%/Claude/claude_desktop_config.json` (Windows):
 ```json
 {
   "mcpServers": {
     "audit-llm": {
       "command": "npx",
       "args": [
+        "--yes",
         "@audit-llm/server",
-        "postgresql://postgres:password@localhost:5432/llm_audit"
+        "postgresql://postgres:password@localhost:5432/llm_audit",
+        "4000"
       ],
       "env": {
         "NODE_ENV": "production"
@@ -131,52 +98,50 @@ Create or edit `mcp.json`:
 }
 ```
 
-### 3. Restart Cursor
+2. Restart Claude Desktop to apply changes
 
-Restart Cursor to apply the changes.
+## API Documentation
 
-## Troubleshooting
+### Endpoints
 
-### Common Issues
-
-1. Port already in use:
+#### GET /health
+Check server health status
 ```bash
-# Error: EADDRINUSE: address already in use :::4000
-# Solution: Use a different port
-audit-llm-server postgresql://user:password@host:5432/db 4001
+curl http://localhost:4000/health
 ```
 
-2. Database connection failed:
+#### GET /schema
+Get JSON schema for log entries
 ```bash
-# Check if database exists
-createdb llm_audit
-
-# Verify credentials
-psql -h localhost -U postgres -d llm_audit
+curl http://localhost:4000/schema
 ```
 
-3. Permission issues:
+#### POST /api/v1/log
+Log an LLM interaction
 ```bash
-# Grant necessary permissions
-psql -U postgres
-postgres=# GRANT ALL PRIVILEGES ON DATABASE llm_audit TO your_user;
+curl -X POST http://localhost:4000/api/v1/log \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "User query",
+    "response": "Model response",
+    "model_type": "claude",
+    "model_version": "3",
+    "metadata": {}
+  }'
 ```
 
-4. Server not starting:
+#### GET /api/v1/logs
+Retrieve logged interactions
 ```bash
-# Check environment variables
-NODE_ENV=development DB_USER=postgres DB_PASSWORD=password DB_HOST=localhost DB_PORT=5432 DB_NAME=llm_audit npm run dev
-
-# Check running processes
-lsof -i :4000
+curl http://localhost:4000/api/v1/logs
 ```
 
-### Environment Variables
+## Environment Variables
 
 ```env
 # Server Configuration
 PORT=4000                    # Default port
-NODE_ENV=development        # or production/test
+NODE_ENV=production         # or development
 
 # Database Configuration
 DB_USER=postgres
@@ -184,107 +149,64 @@ DB_PASSWORD=your_password
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=llm_audit
-DB_SSL=false
-DB_APPLICATION_NAME=llm_auditor
-```
-
-## API Documentation
-
-### GET /schema
-Returns the JSON schema for log entries:
-```json
-{
-  "audit_logs": {
-    "type": "object",
-    "properties": {
-      "id": { "type": "string", "format": "uuid" },
-      "prompt": { "type": "string" },
-      "response": { "type": "string" },
-      "model_type": { "type": "string" },
-      "model_version": { "type": "string" },
-      "inferences": { "type": "object" },
-      "decision_path": { "type": "object" },
-      "final_decision": { "type": "string" },
-      "confidence": { "type": "number" },
-      "metadata": { "type": "object" },
-      "created_at": { "type": "string", "format": "date-time" }
-    },
-    "required": ["prompt", "response", "model_type", "model_version"]
-  }
-}
-```
-
-### POST /api/v1/log
-Create a new log entry:
-```json
-{
-  "prompt": "User input",
-  "response": "Model response",
-  "modelType": "claude",
-  "modelVersion": "3.5-sonnet",
-  "inferences": { "key": "value" },
-  "decisionPath": { "steps": [] },
-  "finalDecision": "decision",
-  "confidence": 0.95,
-  "metadata": { "client": "cursor" }
-}
-```
-
-### GET /api/v1/logs
-Retrieve logs with pagination:
-```
-GET /api/v1/logs?limit=10&offset=0
-```
-
-### GET /health
-Check server status:
-```json
-{
-  "status": "healthy"
-}
+DB_SSL=false               # Enable for production
+DB_APPLICATION_NAME=audit_llm
 ```
 
 ## Development
 
-### Running Tests
 ```bash
-# Create test database
-createdb llm_audit_test
+# Clone repository
+git clone https://github.com/sakhilchawla/audit-llm-decision.git
+cd audit-llm-decision
 
-# Run all tests
-npm test
+# Install dependencies
+npm install
 
-# Run with coverage
-npm run test:coverage
-```
+# Run in development mode
+npm run dev
 
-### Linting
-```bash
-# Run ESLint
-npm run lint
-
-# Fix linting issues
-npm run lint:fix
-```
-
-### Building
-```bash
-# Build for production
+# Build
 npm run build
+
+# Run tests
+npm test
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Connection Failed**
+```bash
+# Check database exists
+createdb llm_audit
+
+# Verify credentials
+psql -h localhost -U postgres -d llm_audit
+```
+
+2. **Port in Use**
+```bash
+# Use different port
+npx @audit-llm/server postgresql://user:pass@localhost:5432/llm_audit 4001
+```
+
+3. **Permission Issues**
+```bash
+# Grant database permissions
+psql -U postgres
+postgres=# GRANT ALL PRIVILEGES ON DATABASE llm_audit TO your_user;
 ```
 
 ## Contributing
 
 1. Fork the repository
 2. Create your feature branch
-3. Install dependencies and set up development environment
-4. Make your changes
-5. Run tests and ensure they pass
-6. Update documentation
-7. Submit a pull request
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-MIT License
-
-Copyright (c) 2024 Sakhil Chawla
+MIT License - see LICENSE file for details

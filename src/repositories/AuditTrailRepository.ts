@@ -1,5 +1,5 @@
-import { AuditTrail } from '../types/AuditTrail';
-import { pool } from '../config/database';
+import { AuditTrail } from '../types/AuditTrail.js';
+import { pool } from '../config/database.js';
 
 export class AuditTrailRepository {
   async initialize(): Promise<void> {
