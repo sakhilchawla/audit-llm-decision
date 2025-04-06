@@ -19,8 +19,8 @@ const mcpLog = (level: 'info' | 'error', message: string, data?: any) => {
   console.log(JSON.stringify(logMessage));
 };
 
-// Create the connection pool
-const pool = new Pool({
+// Create a function to get the pool configuration
+const getPoolConfig = () => ({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   host: process.env.DB_HOST || 'localhost',
@@ -35,27 +35,63 @@ const pool = new Pool({
   application_name: process.env.DB_APPLICATION_NAME
 });
 
-// Log pool events
-pool.on('connect', () => {
-  mcpLog('info', 'New client connected to database');
-});
+// Create the connection pool
+let pool: pkg.Pool;
 
-pool.on('error', (err) => {
-  mcpLog('error', 'Unexpected error on idle client', err);
-  process.exit(-1);
-});
+// Initialize pool with current environment variables
+const initPool = () => {
+  if (pool) {
+    pool.end();
+  }
+  pool = new Pool(getPoolConfig());
+
+  // Log pool events
+  pool.on('connect', () => {
+    mcpLog('info', 'New client connected to database');
+  });
+
+  pool.on('error', (err) => {
+    mcpLog('error', 'Unexpected error on idle client', err);
+    process.exit(-1);
+  });
+
+  return pool;
+};
 
 // Test database connection
 const testConnection = async () => {
   try {
+    // Ensure pool is initialized with latest environment variables
+    initPool();
     const client = await pool.connect();
-    mcpLog('info', 'Successfully connected to database');
+    const result = await client.query('SELECT version()');
+    mcpLog('info', 'Successfully connected to database', {
+      version: result.rows[0].version,
+      config: {
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT,
+        database: process.env.DB_NAME,
+        user: process.env.DB_USER,
+        application_name: process.env.DB_APPLICATION_NAME
+      }
+    });
     client.release();
     return true;
-  } catch (err) {
-    mcpLog('error', 'Error connecting to the database:', err);
+  } catch (err: any) {
+    mcpLog('error', 'Error connecting to the database:', {
+      error: err.message,
+      code: err.code,
+      detail: err.detail,
+      config: {
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT,
+        database: process.env.DB_NAME,
+        user: process.env.DB_USER,
+        application_name: process.env.DB_APPLICATION_NAME
+      }
+    });
     return false;
   }
 };
 
-export { pool, testConnection }; 
+export { pool, testConnection, initPool }; 

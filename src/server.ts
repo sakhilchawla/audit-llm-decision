@@ -7,7 +7,7 @@ import rateLimit from 'express-rate-limit';
 import { AuditTrailController } from './controllers/AuditTrailController.js';
 import { HealthController } from './controllers/HealthController.js';
 import { SchemaController } from './controllers/SchemaController.js';
-import { pool, testConnection } from './db.js';
+import { pool, testConnection, initPool } from './db.js';
 import dotenv from 'dotenv';
 import { URL, fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -80,6 +80,9 @@ if (connectionString) {
     if (appName) {
       process.env.DB_APPLICATION_NAME = appName;
     }
+
+    // Initialize pool with updated environment variables
+    initPool();
   } catch (err: any) {
     mcpLog('error', 'Invalid connection string:', err.message);
     process.exit(1);
@@ -142,16 +145,23 @@ export const initDB = async (): Promise<void> => {
     // Test database connection
     const isConnected = await testConnection();
     if (!isConnected) {
-      throw new Error('Failed to connect to database');
+      mcpLog('error', 'Failed to connect to database. Please check your connection string and ensure PostgreSQL is running.');
+      process.exit(1);
     }
 
     // Create schema if it doesn't exist
     const schema = process.env.DB_SCHEMA || 'public';
-    await pool.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
+    await pool.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`).catch(err => {
+      mcpLog('error', `Failed to create schema: ${err.message}`);
+      throw err;
+    });
     mcpLog('info', `Database initialized with schema: ${schema}`);
 
     // Set search path
-    await pool.query(`SET search_path TO ${schema}`);
+    await pool.query(`SET search_path TO ${schema}`).catch(err => {
+      mcpLog('error', `Failed to set search path: ${err.message}`);
+      throw err;
+    });
 
     // Create table if it doesn't exist
     await pool.query(`
@@ -168,17 +178,23 @@ export const initDB = async (): Promise<void> => {
         metadata JSONB NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE NOT NULL
       )
-    `);
+    `).catch(err => {
+      mcpLog('error', `Failed to create table: ${err.message}`);
+      throw err;
+    });
     mcpLog('info', 'Database table created');
 
     // Create indexes
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_model_interactions_model_type ON model_interactions(model_type);
       CREATE INDEX IF NOT EXISTS idx_model_interactions_created_at ON model_interactions(created_at DESC);
-    `);
+    `).catch(err => {
+      mcpLog('error', `Failed to create indexes: ${err.message}`);
+      throw err;
+    });
     mcpLog('info', 'Database indexes created');
-  } catch (error) {
-    mcpLog('error', 'Database initialization failed:', error);
+  } catch (error: any) {
+    mcpLog('error', 'Database initialization failed:', { error: error.message, stack: error.stack });
     throw error;
   }
 };
