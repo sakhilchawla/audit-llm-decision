@@ -19,6 +19,11 @@ const __dirname = dirname(__filename);
 // Load environment variables
 dotenv.config();
 
+// Set default NODE_ENV if not set
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'production';
+}
+
 // Parse connection string and port from CLI args if provided
 const connectionString = process.argv[2];
 const portArg = process.argv[3];
@@ -41,6 +46,13 @@ if (connectionString) {
     process.env.DB_HOST = dbUrl.hostname;
     process.env.DB_PORT = dbUrl.port;
     process.env.DB_NAME = dbUrl.pathname.slice(1); // Remove leading '/'
+    
+    // Parse application_name from search params
+    const params = new URLSearchParams(dbUrl.search);
+    const appName = params.get('application_name');
+    if (appName) {
+      process.env.DB_APPLICATION_NAME = appName;
+    }
   } catch (err: any) {
     console.error('Invalid connection string:', err.message);
     process.exit(1);
