@@ -44,9 +44,23 @@ const isDirectExecution = process.argv.length >= 3 && (
   process.argv[2].includes('postgresql://')
 );
 
+// MCP logging function
+const mcpLog = (level: 'info' | 'error', message: string, data?: any) => {
+  const logMessage = {
+    jsonrpc: '2.0',
+    method: 'log',
+    params: {
+      level,
+      message,
+      ...(data && { data })
+    }
+  };
+  console.log(JSON.stringify(logMessage));
+};
+
 // Check if running in CLI mode
 if (isDirectExecution && !connectionString) {
-  console.error('Usage: audit-llm-server postgresql://user:password@host:port/database [port]');
+  mcpLog('error', 'Usage: audit-llm-server postgresql://user:password@host:port/database [port]');
   process.exit(1);
 }
 
@@ -54,8 +68,8 @@ if (isDirectExecution && !connectionString) {
 if (connectionString) {
   try {
     const dbUrl = new URL(connectionString);
-    process.env.DB_USER = dbUrl.username;
-    process.env.DB_PASSWORD = dbUrl.password;
+    process.env.DB_USER = decodeURIComponent(dbUrl.username);
+    process.env.DB_PASSWORD = decodeURIComponent(dbUrl.password);
     process.env.DB_HOST = dbUrl.hostname;
     process.env.DB_PORT = dbUrl.port || '5432';
     process.env.DB_NAME = dbUrl.pathname.slice(1); // Remove leading '/'
@@ -67,7 +81,7 @@ if (connectionString) {
       process.env.DB_APPLICATION_NAME = appName;
     }
   } catch (err: any) {
-    console.error('Invalid connection string:', err.message);
+    mcpLog('error', 'Invalid connection string:', err.message);
     process.exit(1);
   }
 }
@@ -82,13 +96,15 @@ if (!process.env.DB_APPLICATION_NAME) {
   process.env.DB_APPLICATION_NAME = 'audit_llm_server';
 }
 
-console.log('Starting server with environment:', process.env.NODE_ENV);
-console.log('Database configuration:', {
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  application_name: process.env.DB_APPLICATION_NAME
+mcpLog('info', 'Starting server', {
+  environment: process.env.NODE_ENV,
+  database: {
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    application_name: process.env.DB_APPLICATION_NAME
+  }
 });
 
 const app = express();
@@ -122,7 +138,7 @@ app.get('/api/v1/logs', AuditTrailController.getLogs);
 
 export const initDB = async (): Promise<void> => {
   try {
-    console.log('Initializing database...');
+    mcpLog('info', 'Initializing database...');
     // Test database connection
     const isConnected = await testConnection();
     if (!isConnected) {
@@ -132,7 +148,7 @@ export const initDB = async (): Promise<void> => {
     // Create schema if it doesn't exist
     const schema = process.env.DB_SCHEMA || 'public';
     await pool.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
-    console.log(`Database initialized with schema: ${schema}`);
+    mcpLog('info', `Database initialized with schema: ${schema}`);
 
     // Set search path
     await pool.query(`SET search_path TO ${schema}`);
@@ -153,16 +169,16 @@ export const initDB = async (): Promise<void> => {
         created_at TIMESTAMP WITH TIME ZONE NOT NULL
       )
     `);
-    console.log('Database table created');
+    mcpLog('info', 'Database table created');
 
     // Create indexes
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_model_interactions_model_type ON model_interactions(model_type);
       CREATE INDEX IF NOT EXISTS idx_model_interactions_created_at ON model_interactions(created_at DESC);
     `);
-    console.log('Database indexes created');
+    mcpLog('info', 'Database indexes created');
   } catch (error) {
-    console.error('Database initialization failed:', error);
+    mcpLog('error', 'Database initialization failed:', error);
     throw error;
   }
 };
@@ -175,26 +191,26 @@ export const stopServer = async (): Promise<void> => {
         resolve();
       });
     });
-    console.log('Server stopped and database connection closed');
+    mcpLog('info', 'Server stopped and database connection closed');
   }
 };
 
 export const startServer = async (port: number = Number(process.env.PORT) || 4001): Promise<void> => {
   try {
-    console.log('Starting server initialization...');
+    mcpLog('info', 'Starting server initialization...');
     await initDB();
     
     return new Promise((resolve, reject) => {
       const tryPort = (currentPort: number) => {
-        console.log(`Attempting to start server on port ${currentPort}...`);
+        mcpLog('info', `Attempting to start server on port ${currentPort}...`);
         server = app.listen(currentPort, () => {
-          console.log(`MCP Logging Server running on port ${currentPort}`);
+          mcpLog('info', `MCP Logging Server running on port ${currentPort}`);
           resolve();
         });
 
         server.on('error', (error: any) => {
           if (error.code === 'EADDRINUSE') {
-            console.log(`Port ${currentPort} is already in use, trying ${currentPort + 1}...`);
+            mcpLog('info', `Port ${currentPort} is already in use, trying ${currentPort + 1}...`);
             server.close();
             tryPort(currentPort + 1);
           } else {
@@ -207,32 +223,32 @@ export const startServer = async (port: number = Number(process.env.PORT) || 400
 
       // Graceful shutdown
       process.on('SIGTERM', async () => {
-        console.log('SIGTERM received. Shutting down gracefully...');
+        mcpLog('info', 'SIGTERM received. Shutting down gracefully...');
         await stopServer();
         process.exit(0);
       });
 
       process.on('SIGINT', async () => {
-        console.log('SIGINT received. Shutting down gracefully...');
+        mcpLog('info', 'SIGINT received. Shutting down gracefully...');
         await stopServer();
         process.exit(0);
       });
     });
   } catch (error) {
-    console.error('Server startup failed:', error);
+    mcpLog('error', 'Server startup failed:', error);
     throw error;
   }
 };
 
 // Start the server only if running directly
 if (isDirectExecution) {
-  console.log(`Starting server in ${process.env.NODE_ENV} mode...`);
+  mcpLog('info', `Starting server in ${process.env.NODE_ENV} mode...`);
   startServer().catch((error) => {
-    console.error('Server startup failed:', error);
+    mcpLog('error', 'Server startup failed:', error);
     process.exit(1);
   });
 } else {
-  console.log('Server module loaded (imported as module)');
+  mcpLog('info', 'Server module loaded (imported as module)');
 }
 
 export { app, server }; 

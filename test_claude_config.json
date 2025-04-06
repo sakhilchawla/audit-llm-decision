@@ -1,16 +1,13 @@
 {
-  "mcpServers": {
-    "audit-llm": {
-      "command": "node",
-      "args": [
-        "dist/server.js",
-        "postgresql://postgres:postgres@localhost:5432/llm_audit?application_name=claude_desktop",
-        "4000"
-      ],
-      "env": {
-        "NODE_ENV": "production",
-        "DB_APPLICATION_NAME": "claude_desktop"
+  "mcp": {
+    "servers": [
+      {
+        "name": "audit-llm-server",
+        "command": "npx @audit-llm/server@1.0.9 \"postgresql://postgres:postgres@localhost:5432/llm_audit?application_name=claude_desktop\" 4000",
+        "environment": {
+          "NODE_ENV": "production"
+        }
       }
-    }
+    ]
   }
 } 
