@@ -117,7 +117,8 @@ Note: Make sure to:
     "audit-llm": {
       "command": "npx",
       "args": [
-        "@audit-llm/server",
+        "--yes",
+        "@audit-llm/server@1.0.10",
         "postgresql://postgres:password@localhost:5432/llm_audit?application_name=claude_desktop",
         "4000"
       ],
@@ -133,11 +134,36 @@ Note: Make sure to:
 Note: 
 - Replace `postgres:password` with your actual database credentials
 - The `application_name` parameter helps identify connections in your database
-- The server will respond with `{"status":"healthy"}` when running correctly
+- The server uses JSON-RPC formatted logs for MCP communication
 - Make sure the database exists and is accessible before starting
-- The `npx` command will automatically download and run the latest version
+- The `--yes` flag automatically accepts the package installation
+- The server will automatically handle port conflicts by incrementing the port number
+- All logs will be properly formatted for Claude Desktop's MCP protocol
 
 2. Restart Claude Desktop to apply changes
+
+### MCP Integration Details
+
+The server implements the Model Context Protocol (MCP) with the following features:
+
+1. JSON-RPC Logging
+   - All logs are formatted as JSON-RPC 2.0 messages
+   - Proper error handling and status reporting
+   - Structured logging for better integration
+
+2. Automatic Port Management
+   - Automatically finds available ports if default is in use
+   - Reports port changes through MCP logging
+
+3. Connection Status
+   - Real-time database connection status
+   - Application name tracking for connection identification
+   - Proper shutdown handling
+
+4. Error Handling
+   - Structured error reporting through MCP
+   - Clear status messages for troubleshooting
+   - Graceful shutdown on errors
 
 ## API Documentation
 
