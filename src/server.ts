@@ -58,6 +58,126 @@ const mcpLog = (level: 'info' | 'error', message: string, data?: any) => {
   console.log(JSON.stringify(logMessage));
 };
 
+// MCP protocol handler
+interface McpRequest {
+  jsonrpc: '2.0';
+  method: string;
+  params?: any;
+  id?: number;
+}
+
+interface McpResponse {
+  jsonrpc: '2.0';
+  result: any;
+  id: number;
+}
+
+interface McpError {
+  jsonrpc: '2.0';
+  error: {
+    code: number;
+    message: string;
+    data?: any;
+  };
+  id: number;
+}
+
+const handleMcpProtocol = () => {
+  let initialized = false;
+  let lastHeartbeat = Date.now();
+
+  // Keep the process alive
+  const interval = setInterval(() => {
+    const now = Date.now();
+    if (now - lastHeartbeat > 60000) {
+      mcpLog('info', 'No heartbeat received in 60 seconds, but keeping server alive');
+    }
+  }, 30000);
+
+  // Handle process termination
+  const cleanup = async () => {
+    clearInterval(interval);
+    mcpLog('info', 'Shutting down gracefully...');
+    await stopServer();
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', cleanup);
+  process.on('SIGINT', cleanup);
+
+  // Handle stdin
+  process.stdin.on('data', (data) => {
+    try {
+      const message: McpRequest = JSON.parse(data.toString());
+      
+      // Handle initialization
+      if (message.method === 'initialize' && message.id !== undefined) {
+        initialized = true;
+        const response: McpResponse = {
+          jsonrpc: '2.0',
+          result: {
+            protocolVersion: '2024-11-05',
+            serverInfo: {
+              name: '@audit-llm/server',
+              version: process.env.npm_package_version || '1.0.15'
+            },
+            capabilities: {}
+          },
+          id: message.id
+        };
+        process.stdout.write(JSON.stringify(response) + '\n');
+        mcpLog('info', 'MCP initialization complete');
+      }
+      // Handle heartbeat
+      else if (message.method === 'heartbeat' && message.id !== undefined) {
+        lastHeartbeat = Date.now();
+        const response: McpResponse = {
+          jsonrpc: '2.0',
+          result: null,
+          id: message.id
+        };
+        process.stdout.write(JSON.stringify(response) + '\n');
+      }
+      // Handle shutdown
+      else if (message.method === 'shutdown') {
+        mcpLog('info', 'Shutdown requested by client');
+        cleanup();
+      }
+      // Handle unknown methods
+      else if (message.id !== undefined) {
+        const error: McpError = {
+          jsonrpc: '2.0',
+          error: {
+            code: -32601,
+            message: `Method ${message.method} not found`
+          },
+          id: message.id
+        };
+        process.stdout.write(JSON.stringify(error) + '\n');
+      }
+    } catch (err) {
+      // Handle parse errors
+      if (err instanceof SyntaxError) {
+        mcpLog('error', 'Invalid JSON received:', { data: data.toString() });
+        return;
+      }
+      
+      mcpLog('error', 'Error handling MCP message:', err);
+    }
+  });
+
+  // Handle stdin end
+  process.stdin.on('end', () => {
+    mcpLog('info', 'stdin stream ended');
+    cleanup();
+  });
+
+  // Handle stdin errors
+  process.stdin.on('error', (err) => {
+    mcpLog('error', 'stdin stream error:', err);
+  });
+};
+
 // Check if running in CLI mode
 if (isDirectExecution && !connectionString) {
   mcpLog('error', 'Usage: audit-llm-server postgresql://user:password@host:port/database [port]');
@@ -259,6 +379,11 @@ export const startServer = async (port: number = Number(process.env.PORT) || 400
 // Start the server only if running directly
 if (isDirectExecution) {
   mcpLog('info', `Starting server in ${process.env.NODE_ENV} mode...`);
+  // Initialize MCP protocol handler if running in MCP mode
+  if (process.env.DB_APPLICATION_NAME?.includes('claude_desktop') || 
+      process.env.DB_APPLICATION_NAME?.includes('cursor_mcp')) {
+    handleMcpProtocol();
+  }
   startServer().catch((error) => {
     mcpLog('error', 'Server startup failed:', error);
     process.exit(1);
