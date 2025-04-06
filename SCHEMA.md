@@ -1,104 +1,124 @@
-# MCP Logging Server Schema Documentation
+# Audit LLM Decisions - Schema Documentation
 
 ## Database Schema
 
+The system uses PostgreSQL to store LLM interactions and decisions. Below is a detailed description of the database schema.
+
 ### Table: model_interactions
 
-This table stores all model interactions across different clients and model types.
+This table stores all LLM interactions, including the original prompts, responses, and decision-making process.
 
 ```sql
 CREATE TABLE model_interactions (
-    id SERIAL PRIMARY KEY,
-    prompt TEXT NOT NULL,
-    response TEXT NOT NULL,
-    model_type VARCHAR(50) NOT NULL,
-    model_version VARCHAR(50) NOT NULL,
-    metadata JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prompt TEXT NOT NULL,
+  response TEXT NOT NULL,
+  model_type VARCHAR(255) NOT NULL,
+  model_version VARCHAR(255) NOT NULL,
+  inferences JSONB,
+  decision_path JSONB,
+  final_decision TEXT,
+  confidence FLOAT,
+  metadata JSONB NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
+
+-- Indexes for better query performance
+CREATE INDEX idx_model_interactions_model_type ON model_interactions(model_type);
+CREATE INDEX idx_model_interactions_created_at ON model_interactions(created_at DESC);
 ```
 
-#### Column Descriptions
+### Field Descriptions
 
 - `id`: Unique identifier for each interaction
-- `prompt`: The input text/prompt sent to the model
-- `response`: The model's response text
-- `model_type`: Type of model (e.g., 'claude', 'gpt', 'llama')
-- `model_version`: Version of the model (e.g., '3.5-sonnet', '4', '2-70b')
-- `metadata`: JSON object containing additional information
-- `created_at`: Timestamp when the interaction was logged
+- `prompt`: The original input/question from the user
+- `response`: The LLM's response to the prompt
+- `model_type`: The type of LLM (e.g., "claude", "gpt")
+- `model_version`: Version of the model used
+- `inferences`: JSON object containing the model's reasoning process
+- `decision_path`: JSON object detailing the steps taken to reach the conclusion
+- `final_decision`: The ultimate decision or action taken
+- `confidence`: Confidence score (0.0 to 1.0) in the decision
+- `metadata`: Additional context about the interaction
+- `created_at`: Timestamp of when the interaction was logged
 
-#### Metadata Schema
-
-The `metadata` column is a JSONB field that can include:
+### Example Data
 
 ```json
 {
-  "client": "string",          // Client identifier
-  "timestamp": "ISO-8601",     // Client-side timestamp
-  "temperature": "number",     // Model temperature setting
-  "context_length": "number",  // Context window size
-  "user_id": "string",        // Optional user identifier
-  "session_id": "string",     // Optional session identifier
-  "tags": ["string"],         // Optional tags for categorization
-  "custom_fields": {}         // Any additional client-specific data
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "prompt": "What is quantum computing?",
+  "response": "Quantum computing uses quantum phenomena...",
+  "model_type": "claude",
+  "model_version": "3.5-sonnet",
+  "inferences": {
+    "key_concepts": ["superposition", "entanglement"],
+    "relevance_score": 0.95
+  },
+  "decision_path": {
+    "analysis": {
+      "step1": "identify_topic",
+      "step2": "assess_complexity",
+      "step3": "formulate_response"
+    },
+    "reasoning": "Technical concept requires clear explanation"
+  },
+  "final_decision": "provide_basic_explanation",
+  "confidence": 0.92,
+  "metadata": {
+    "client": "web-interface",
+    "timestamp": "2024-04-06T06:00:00.000Z",
+    "conversation_type": "technical_explanation"
+  },
+  "created_at": "2024-04-06T06:00:00.000Z"
 }
 ```
 
-## Indexes
+### Best Practices
 
-```sql
--- For efficient querying by model type and version
-CREATE INDEX idx_model_interactions_type_version ON model_interactions(model_type, model_version);
+When sending data to the Audit LLM system:
 
--- For timestamp-based queries
-CREATE INDEX idx_model_interactions_created_at ON model_interactions(created_at);
+1. Always include all required fields:
+   - prompt
+   - response
+   - model_type
+   - model_version
+   - metadata
 
--- For JSON metadata queries
-CREATE INDEX idx_model_interactions_metadata ON model_interactions USING GIN (metadata);
-```
+2. Structure your inferences and decision paths consistently:
+   - Use clear, descriptive keys
+   - Include relevant scores and classifications
+   - Document the reasoning process
 
-## Example Queries
+3. Use the metadata field to provide context:
+   - Include client information
+   - Add timestamps
+   - Specify conversation types or categories
 
-1. **Get recent interactions for a specific model:**
+4. Set appropriate confidence scores:
+   - Use 0.0 to 1.0 range
+   - Be realistic about confidence levels
+   - Consider multiple factors in scoring
+
+### Query Examples
+
+1. Get recent interactions:
 ```sql
 SELECT * FROM model_interactions 
-WHERE model_type = 'claude' 
 ORDER BY created_at DESC 
 LIMIT 10;
 ```
 
-2. **Search by metadata fields:**
+2. Filter by model type:
 ```sql
 SELECT * FROM model_interactions 
-WHERE metadata->>'client' = 'web-app' 
-AND metadata->>'user_id' = '123';
+WHERE model_type = 'claude' 
+ORDER BY created_at DESC;
 ```
 
-3. **Get interaction counts by model:**
+3. Find high-confidence decisions:
 ```sql
-SELECT model_type, model_version, COUNT(*) 
-FROM model_interactions 
-GROUP BY model_type, model_version;
-```
-
-## API Payload Example
-
-When sending data to the MCP logging server:
-
-```json
-{
-  "prompt": "What is AI?",
-  "response": "AI is...",
-  "modelType": "claude",
-  "modelVersion": "3.5-sonnet",
-  "metadata": {
-    "client": "web-app",
-    "timestamp": "2024-04-06T05:45:00Z",
-    "temperature": 0.7,
-    "user_id": "user_123",
-    "session_id": "sess_456",
-    "tags": ["test", "production"]
-  }
-}
+SELECT * FROM model_interactions 
+WHERE confidence > 0.9 
+ORDER BY confidence DESC;
 ``` 

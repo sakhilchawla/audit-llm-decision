@@ -5,54 +5,49 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+
+# Install dependencies
 RUN npm ci
 
 # Copy source code
-COPY tsconfig.json ./
-COPY src/ ./src/
+COPY . .
 
 # Build TypeScript code
 RUN npm run build
 
-# Production stage
-FROM node:18-alpine
+FROM node:18-alpine AS runner
 
-# Install production dependencies only
 WORKDIR /app
+
+# Copy package files and install production dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --production
 
-# Copy built files from builder stage
+# Copy built files from builder
 COPY --from=builder /app/dist ./dist
-COPY .env.example ./.env
 
-# Create non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
-
-# Environment variables with defaults
+# Set environment variables
 ENV NODE_ENV=production \
     PORT=4000 \
     DB_USER=postgres \
-    DB_HOST=localhost \
+    DB_PASSWORD=postgres \
+    DB_HOST=postgres \
     DB_PORT=5432 \
-    DB_NAME=mcp_logs \
+    DB_NAME=llm_audit \
     DB_SSL=false \
     DB_SSL_REJECT_UNAUTHORIZED=true \
     DB_MAX_POOL_SIZE=20 \
     DB_IDLE_TIMEOUT=10000 \
     DB_CONNECTION_TIMEOUT=0 \
-    DB_APPLICATION_NAME=mcp_logger \
-    DB_SCHEMA=public \
-    LOG_LEVEL=info \
-    ENABLE_METRICS=false
+    DB_APPLICATION_NAME=llm_auditor \
+    DB_SCHEMA=public
 
 # Expose port
-EXPOSE ${PORT}
+EXPOSE 4000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT}/health || exit 1
 
-# Start the application
+# Start the server
 CMD ["node", "dist/server.js"]

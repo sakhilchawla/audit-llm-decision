@@ -1,180 +1,133 @@
-# MCP Logging Server
+# Audit LLM Decisions Server
 
-A robust logging server for tracking and auditing AI model interactions. Built with Node.js, TypeScript, and PostgreSQL.
+A robust server for logging and auditing LLM interactions, decisions, and their reasoning processes. This system helps track and analyze how LLMs make decisions, providing transparency and accountability in AI systems.
 
 ## Features
 
-- Automatic logging of AI model interactions
-- Structured storage of model inferences and decision paths
-- RESTful API endpoints for logging and retrieval
-- Configurable database settings via environment variables
-- Health check endpoints for monitoring
-- Production-ready with error handling and validation
+- Log LLM interactions with detailed context
+- Track decision-making processes and inferences
+- Store confidence scores and final decisions
+- Query and analyze historical interactions
+- RESTful API for easy integration
+- Rate limiting and security features
+- Comprehensive error handling
 
-## Quick Start
+## Prerequisites
 
-> **🤖 AI Models**: For quick integration instructions, see [MODEL_INSTRUCTIONS.md](MODEL_INSTRUCTIONS.md)
+- Node.js (v18 or higher)
+- PostgreSQL (v14 or higher)
+- npm or yarn
 
-1. **Clone and Install**
+## Installation
+
+1. Clone the repository:
 ```bash
-git clone https://github.com/sakhilchawla/audit-llm-decision.git
-cd audit-llm-decision
+git clone https://github.com/yourusername/audit-llm-server.git
+cd audit-llm-server
+```
+
+2. Install dependencies:
+```bash
 npm install
 ```
 
-2. **Configure Environment**
-Copy `.env.example` to `.env` and set your values:
+3. Set up environment variables:
 ```bash
 cp .env.example .env
 ```
+Edit `.env` with your configuration.
 
-Required environment variables:
-```
-# Server Configuration
-PORT=4000
-NODE_ENV=development
-
-# Database Configuration
-DB_USER=your_user
-DB_PASSWORD=your_password
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=mcp_audit
-DB_SSL=false
-DB_SSL_REJECT_UNAUTHORIZED=true
-DB_MAX_POOL_SIZE=20
-DB_IDLE_TIMEOUT=10000
-DB_CONNECTION_TIMEOUT=0
-DB_APPLICATION_NAME="mcp_logger"
-DB_SCHEMA="public"
-
-# Security Configuration
-RATE_LIMIT_WINDOW_MS=900000  # 15 minutes
-RATE_LIMIT_MAX_REQUESTS=100
-CORS_ORIGIN="*"              # Set to specific origins in production
-CORS_METHODS="GET,POST"
-```
-
-3. **Start the Server**
+4. Create the database:
 ```bash
-# Development
-npm run dev
+createdb llm_audit
+```
 
-# Production
+## Development
+
+Start the development server:
+```bash
+npm run dev
+```
+
+Run tests:
+```bash
+npm test
+```
+
+Build for production:
+```bash
 npm run build
-npm start
 ```
 
 ## API Endpoints
 
-### Log Interaction
-```bash
-POST /api/v1/log
-Content-Type: application/json
+### POST /log
+Log a new LLM interaction.
 
+```json
 {
-  "prompt": "user question",
-  "response": "model response",
-  "modelType": "model name",
-  "modelVersion": "version",
+  "prompt": "What is quantum computing?",
+  "response": "Quantum computing uses quantum phenomena...",
+  "modelType": "claude",
+  "modelVersion": "3.5-sonnet",
   "inferences": {
-    // reasoning process
+    "key_concepts": ["superposition", "entanglement"],
+    "relevance_score": 0.95
   },
   "decisionPath": {
-    // steps taken
+    "analysis": {
+      "step1": "identify_topic",
+      "step2": "assess_complexity",
+      "step3": "formulate_response"
+    },
+    "reasoning": "Technical concept requires clear explanation"
   },
-  "finalDecision": "action taken",
-  "confidence": 0.95,
+  "finalDecision": "provide_basic_explanation",
+  "confidence": 0.92,
   "metadata": {
-    // additional context
+    "client": "web-interface",
+    "timestamp": "2024-04-06T06:00:00.000Z",
+    "conversation_type": "technical_explanation"
   }
 }
 ```
 
-### Retrieve Logs
+### GET /logs
+Retrieve logged interactions with pagination and filtering.
+
+Query parameters:
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 10)
+- `modelType`: Filter by model type
+- `startDate`: Filter by start date
+- `endDate`: Filter by end date
+
+### GET /health
+Check server health status.
+
+## Docker
+
+Build and run with Docker:
+
 ```bash
-GET /api/v1/logs?modelType=model-name&limit=10
+docker-compose up --build
 ```
 
-### Health Check
-```bash
-GET /health
-```
+This will start both the server and a PostgreSQL instance.
 
-## Deployment
+## Environment Variables
 
-### Local Development
-```bash
-npm run dev
-```
+- `PORT`: Server port (default: 4000)
+- `NODE_ENV`: Environment (development/production)
+- `DB_HOST`: Database host
+- `DB_PORT`: Database port
+- `DB_NAME`: Database name (default: llm_audit)
+- `DB_USER`: Database user
+- `DB_PASSWORD`: Database password
+- `DB_SSL`: Enable SSL for database (true/false)
+- `DB_APPLICATION_NAME`: Application name for database connections
 
-### Docker Deployment
-1. Build the image:
-   ```bash
-   docker build -t mcp-logging-server .
-   ```
-2. Run with Docker Compose:
-   ```bash
-   docker-compose up -d
-   ```
-
-### Cloud Deployment
-
-#### Prerequisites
-- PostgreSQL database
-- Node.js 16+ environment
-- Environment variables configured
-
-#### Steps
-1. Set up environment variables for production
-2. Install dependencies:
-   ```bash
-   npm ci --production
-   ```
-3. Build the TypeScript code:
-   ```bash
-   npm run build
-   ```
-4. Start the server:
-   ```bash
-   npm start
-   ```
-
-#### Cloud Platform Specific
-
-##### Heroku
-```bash
-git push heroku main
-```
-
-##### AWS Elastic Beanstalk
-```bash
-eb deploy
-```
-
-##### Google Cloud Run
-```bash
-gcloud run deploy
-```
-
-## Monitoring
-
-- Health endpoint: `GET /health`
-- Database connection status
-- Server logs with configurable levels
-- Error tracking
-- Rate limit monitoring
-- Connection pool metrics
-
-## Security
-
-- Input validation using express-validator
-- SQL injection protection with parameterized queries
-- Rate limiting (configurable via environment variables)
-- CORS protection (configurable via environment variables)
-- Error handling with sanitized responses
-- SSL/TLS support for database connections
-- Secure headers with helmet.js
+See `.env.example` for all available options.
 
 ## Contributing
 
