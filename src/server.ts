@@ -19,18 +19,33 @@ const __dirname = dirname(__filename);
 // Load environment variables
 dotenv.config();
 
-// Set default NODE_ENV if not set
+// Set default NODE_ENV
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
 // Parse connection string and port from CLI args if provided
 const connectionString = process.argv[2];
 const portArg = process.argv[3];
 
-// Check if running directly (via node/npx) or as a module
-const isMainModule = process.argv[1]?.includes('server') || process.argv[1]?.includes('@audit-llm/server');
+// Check if running directly (not imported as a module)
+const isDirectExecution = process.argv.length >= 3 && (
+  // Direct node execution
+  process.argv[1].endsWith('server.js') ||
+  process.argv[1].includes('dist/server.js') ||
+  // NPX execution
+  process.argv[1].includes('@audit-llm/server') ||
+  process.argv[1].includes('audit-llm-server') ||
+  process.argv[1].includes('node_modules/@audit-llm/server') ||
+  process.argv[1].includes('node_modules/.bin/audit-llm-server') ||
+  // Handle npx with specific versions
+  /node_modules\/@audit-llm\/server(@[^/]+)?\/dist\/server\.js/.test(process.argv[1]) ||
+  // Handle local npx
+  process.argv[1].includes('/dist/server.js') ||
+  // Handle all other cases where we have connection string argument
+  process.argv[2].includes('postgresql://')
+);
 
-// Only require connection string in CLI mode
-if (isMainModule && !connectionString && !process.env.DB_URL) {
+// Check if running in CLI mode
+if (isDirectExecution && !connectionString) {
   console.error('Usage: audit-llm-server postgresql://user:password@host:port/database [port]');
   process.exit(1);
 }
@@ -45,13 +60,11 @@ if (connectionString) {
     process.env.DB_PORT = dbUrl.port || '5432';
     process.env.DB_NAME = dbUrl.pathname.slice(1); // Remove leading '/'
     
-    // Parse application_name from search params
+    // Parse application_name from search params if present
     const params = new URLSearchParams(dbUrl.search);
     const appName = params.get('application_name');
     if (appName) {
       process.env.DB_APPLICATION_NAME = appName;
-    } else {
-      process.env.DB_APPLICATION_NAME = 'audit_llm_server';
     }
   } catch (err: any) {
     console.error('Invalid connection string:', err.message);
@@ -62,6 +75,11 @@ if (connectionString) {
 // Set port from command line if provided
 if (portArg) {
   process.env.PORT = portArg;
+}
+
+// Ensure we have an application name
+if (!process.env.DB_APPLICATION_NAME) {
+  process.env.DB_APPLICATION_NAME = 'audit_llm_server';
 }
 
 console.log('Starting server with environment:', process.env.NODE_ENV);
@@ -167,18 +185,25 @@ export const startServer = async (port: number = Number(process.env.PORT) || 400
     await initDB();
     
     return new Promise((resolve, reject) => {
-      console.log(`Attempting to start server on port ${port}...`);
-      server = app.listen(port, () => {
-        console.log(`MCP Logging Server running on port ${port}`);
-        resolve();
-      });
+      const tryPort = (currentPort: number) => {
+        console.log(`Attempting to start server on port ${currentPort}...`);
+        server = app.listen(currentPort, () => {
+          console.log(`MCP Logging Server running on port ${currentPort}`);
+          resolve();
+        });
 
-      server.on('error', (error: any) => {
-        if (error.code === 'EADDRINUSE') {
-          console.error(`Port ${port} is already in use`);
-        }
-        reject(error);
-      });
+        server.on('error', (error: any) => {
+          if (error.code === 'EADDRINUSE') {
+            console.log(`Port ${currentPort} is already in use, trying ${currentPort + 1}...`);
+            server.close();
+            tryPort(currentPort + 1);
+          } else {
+            reject(error);
+          }
+        });
+      };
+
+      tryPort(port);
 
       // Graceful shutdown
       process.on('SIGTERM', async () => {
@@ -199,15 +224,15 @@ export const startServer = async (port: number = Number(process.env.PORT) || 400
   }
 };
 
-// Start the server if this file is run directly
-if (isMainModule) {
+// Start the server only if running directly
+if (isDirectExecution) {
   console.log(`Starting server in ${process.env.NODE_ENV} mode...`);
   startServer().catch((error) => {
     console.error('Server startup failed:', error);
     process.exit(1);
   });
 } else {
-  console.log('Server module loaded but not started (imported as module)');
+  console.log('Server module loaded (imported as module)');
 }
 
 export { app, server }; 
