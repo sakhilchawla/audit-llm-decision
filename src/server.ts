@@ -82,6 +82,50 @@ interface McpError {
   id: number;
 }
 
+// MCP method handlers
+const mcpHandlers: {
+  [key: string]: (params: any, id: number) => McpResponse;
+} = {
+  'initialize': (params: any, id: number) => ({
+    jsonrpc: '2.0',
+    result: {
+      protocolVersion: '2024-11-05',
+      serverInfo: {
+        name: '@audit-llm/server',
+        version: process.env.npm_package_version || '1.0.16'
+      },
+      capabilities: {}
+    },
+    id
+  }),
+  'resources/list': (params: any, id: number) => ({
+    jsonrpc: '2.0',
+    result: {
+      resources: []
+    },
+    id
+  }),
+  'prompts/list': (params: any, id: number) => ({
+    jsonrpc: '2.0',
+    result: {
+      prompts: []
+    },
+    id
+  }),
+  'tools/list': (params: any, id: number) => ({
+    jsonrpc: '2.0',
+    result: {
+      tools: []
+    },
+    id
+  }),
+  'heartbeat': (params: any, id: number) => ({
+    jsonrpc: '2.0',
+    result: null,
+    id
+  })
+};
+
 const handleMcpProtocol = () => {
   let initialized = false;
   let lastHeartbeat = Date.now();
@@ -108,52 +152,44 @@ const handleMcpProtocol = () => {
   // Handle stdin
   process.stdin.on('data', (data) => {
     try {
-      const message: McpRequest = JSON.parse(data.toString());
+      const messages = data.toString().trim().split('\n');
       
-      // Handle initialization
-      if (message.method === 'initialize' && message.id !== undefined) {
-        initialized = true;
-        const response: McpResponse = {
-          jsonrpc: '2.0',
-          result: {
-            protocolVersion: '2024-11-05',
-            serverInfo: {
-              name: '@audit-llm/server',
-              version: process.env.npm_package_version || '1.0.15'
-            },
-            capabilities: {}
-          },
-          id: message.id
-        };
-        process.stdout.write(JSON.stringify(response) + '\n');
-        mcpLog('info', 'MCP initialization complete');
-      }
-      // Handle heartbeat
-      else if (message.method === 'heartbeat' && message.id !== undefined) {
+      for (const messageStr of messages) {
+        if (!messageStr.trim()) continue;
+        
+        const message: McpRequest = JSON.parse(messageStr);
+        
+        // Handle initialization
+        if (message.method === 'initialize') {
+          initialized = true;
+        }
+
+        // Update heartbeat timestamp for any message
         lastHeartbeat = Date.now();
-        const response: McpResponse = {
-          jsonrpc: '2.0',
-          result: null,
-          id: message.id
-        };
-        process.stdout.write(JSON.stringify(response) + '\n');
-      }
-      // Handle shutdown
-      else if (message.method === 'shutdown') {
-        mcpLog('info', 'Shutdown requested by client');
-        cleanup();
-      }
-      // Handle unknown methods
-      else if (message.id !== undefined) {
-        const error: McpError = {
-          jsonrpc: '2.0',
-          error: {
-            code: -32601,
-            message: `Method ${message.method} not found`
-          },
-          id: message.id
-        };
-        process.stdout.write(JSON.stringify(error) + '\n');
+
+        // Handle notifications
+        if (message.method.startsWith('notifications/')) {
+          return;
+        }
+
+        // Handle methods with response
+        if (message.id !== undefined) {
+          const handler = mcpHandlers[message.method];
+          if (handler) {
+            const response = handler(message.params, message.id);
+            process.stdout.write(JSON.stringify(response) + '\n');
+          } else {
+            const error: McpError = {
+              jsonrpc: '2.0',
+              error: {
+                code: -32601,
+                message: `Method ${message.method} not found`
+              },
+              id: message.id
+            };
+            process.stdout.write(JSON.stringify(error) + '\n');
+          }
+        }
       }
     } catch (err) {
       // Handle parse errors
