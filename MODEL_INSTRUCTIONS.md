@@ -1,4 +1,6 @@
-# MCP Logging System - AI Model Instructions
+# Audit LLM Decisions - AI Model Instructions
+
+Use this as prompt for any LLM client you are using and it should autosend all the audit logs for the queries being made to the LLM.
 
 ## Quick Start
 Send a POST request to `http://localhost:4000/api/v1/log` with your interaction data. That's it!
