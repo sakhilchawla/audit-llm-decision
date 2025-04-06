@@ -1,6 +1,6 @@
 {
   "name": "@audit-llm/server",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Model Context Protocol (MCP) server for auditing and logging LLM interactions",
   "main": "dist/server.js",
   "type": "module",
