@@ -29,7 +29,7 @@ const connectionString = process.argv[2];
 const portArg = process.argv[3];
 
 // Check if running as main module (works in both ESM and CJS)
-const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
+const isMainModule = process.argv[1]?.endsWith('server.js') || process.argv[1]?.endsWith('server.ts');
 
 // Only require connection string in CLI mode
 if (isMainModule && !connectionString && !process.env.DB_URL) {
