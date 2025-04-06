@@ -5,6 +5,20 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
+// MCP logging function
+const mcpLog = (level: 'info' | 'error', message: string, data?: any) => {
+  const logMessage = {
+    jsonrpc: '2.0',
+    method: 'log',
+    params: {
+      level,
+      message,
+      ...(data && { data })
+    }
+  };
+  console.log(JSON.stringify(logMessage));
+};
+
 // Create the connection pool
 const pool = new Pool({
   user: process.env.DB_USER,
@@ -18,16 +32,16 @@ const pool = new Pool({
   max: parseInt(process.env.DB_MAX_POOL_SIZE || '20'),
   idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '10000'),
   connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '0'),
-  application_name: process.env.DB_APPLICATION_NAME || 'mcp_logger'
+  application_name: process.env.DB_APPLICATION_NAME
 });
 
 // Log pool events
 pool.on('connect', () => {
-  console.log('New client connected to database');
+  mcpLog('info', 'New client connected to database');
 });
 
 pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
+  mcpLog('error', 'Unexpected error on idle client', err);
   process.exit(-1);
 });
 
@@ -35,11 +49,11 @@ pool.on('error', (err) => {
 const testConnection = async () => {
   try {
     const client = await pool.connect();
-    console.log('Successfully connected to database');
+    mcpLog('info', 'Successfully connected to database');
     client.release();
     return true;
   } catch (err) {
-    console.error('Error connecting to the database:', err);
+    mcpLog('error', 'Error connecting to the database:', err);
     return false;
   }
 };
