@@ -17,8 +17,8 @@ A robust logging server for tracking and auditing AI model interactions. Built w
 
 1. **Clone and Install**
 ```bash
-git clone https://github.com/yourusername/mcp-logging-server.git
-cd mcp-logging-server
+git clone https://github.com/sakhilchawla/audit-llm-decision.git
+cd audit-llm-decision
 npm install
 ```
 
