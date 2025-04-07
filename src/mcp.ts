@@ -97,7 +97,7 @@ async function handleMcpMessage(message: McpMessage) {
           protocolVersion: '2024-11-05',
           serverInfo: {
             name: '@audit-llm/server',
-            version: '1.1.5'
+            version: '1.1.6'
           },
           capabilities: {
             tools: true,
@@ -233,6 +233,7 @@ export function handleMcpProtocol() {
 
   // Handle process termination
   let isShuttingDown = false;
+  let messageBuffer = '';
 
   const cleanup = async () => {
     if (isShuttingDown) return;
@@ -243,7 +244,7 @@ export function handleMcpProtocol() {
     rl.close();
     await pool.end();
     mcpLog('info', 'Server stopped and database connection closed');
-    process.exit(0); // Ensure clean exit
+    process.exit(0);
   };
 
   process.on('SIGTERM', cleanup);
@@ -263,7 +264,6 @@ export function handleMcpProtocol() {
           params: null
         };
         process.stdout.write(JSON.stringify(notification) + '\n');
-        mcpLog('debug', 'Sent heartbeat');
       } catch (error) {
         mcpLog('error', 'Error sending heartbeat:', error);
       }
@@ -282,8 +282,9 @@ export function handleMcpProtocol() {
       }
 
       // Log raw message for debugging
-      mcpLog('debug', 'Raw message received:', line);
+      mcpLog('debug', 'Raw message received:', { line });
 
+      // Try to parse the message
       let message;
       try {
         message = JSON.parse(line);
@@ -301,22 +302,22 @@ export function handleMcpProtocol() {
         process.stdout.write(JSON.stringify(parseErrorResponse) + '\n');
         return;
       }
-      
+
       // Validate message structure
       if (!message || typeof message !== 'object') {
         throw new Error('Invalid message format: not an object');
       }
-      
+
       if (message.jsonrpc !== '2.0') {
         throw new Error('Invalid message format: missing or invalid jsonrpc version');
       }
-      
+
       if (typeof message.method !== 'string') {
         throw new Error('Invalid message format: missing or invalid method');
       }
 
       // Log parsed message for debugging
-      mcpLog('debug', 'Parsed message:', message);
+      mcpLog('debug', 'Parsed message:', { message });
 
       await handleMcpMessage(message);
     } catch (error) {

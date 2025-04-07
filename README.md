@@ -132,6 +132,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Version History
 
+### 1.1.6
+- Fixed JSON parsing and validation
+- Improved error handling and logging
+- Enhanced connection stability with proper stderr logging
+- Added debug logging for troubleshooting
+
 ### 1.1.5
 - Fixed JSON parsing and validation
 - Improved error handling and logging
