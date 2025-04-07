@@ -132,6 +132,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Version History
 
+### 1.1.8
+- Improved message buffering for partial messages
+- Enhanced message parsing and validation
+- Added robust heartbeat timeout handling
+- Better error handling and response formatting
+- Fixed JSON parsing issues with proper message boundaries
+
 ### 1.1.7
 - Improved MCP protocol handling with direct stdin/stdout
 - Enhanced message parsing and validation
