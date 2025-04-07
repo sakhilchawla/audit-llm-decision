@@ -132,7 +132,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Version History
 
-- 1.1.4 - Fixed JSON parsing, improved MCP protocol handling, enhanced connection stability
+### 1.1.5
+- Fixed JSON parsing and validation
+- Improved error handling and logging
+- Enhanced connection stability
+- Added debug logging for troubleshooting
+
+### 1.1.4
+- Fixed JSON parsing, improved MCP protocol handling, enhanced connection stability
 - 1.1.3 - Added response caching, improved connection stability, enhanced MCP protocol handling
 - 1.1.2 - Fixed MCP protocol initialization and binary execution
 - 1.1.1 - Improved error handling, fixed HTTP endpoints, enhanced test coverage

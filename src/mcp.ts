@@ -97,7 +97,7 @@ async function handleMcpMessage(message: McpMessage) {
           protocolVersion: '2024-11-05',
           serverInfo: {
             name: '@audit-llm/server',
-            version: '1.1.4'
+            version: '1.1.5'
           },
           capabilities: {
             tools: true,
@@ -243,22 +243,27 @@ export function handleMcpProtocol() {
     rl.close();
     await pool.end();
     mcpLog('info', 'Server stopped and database connection closed');
+    process.exit(0); // Ensure clean exit
   };
 
   process.on('SIGTERM', cleanup);
   process.on('SIGINT', cleanup);
+  process.on('uncaughtException', (error) => {
+    mcpLog('error', 'Uncaught exception:', error);
+    cleanup();
+  });
 
   // Keep the connection alive with a proper JSON-RPC notification
   const heartbeat = setInterval(() => {
     if (!isShuttingDown) {
       try {
-        // Send a proper JSON-RPC notification instead of newline
         const notification = {
           jsonrpc: '2.0',
           method: 'server/heartbeat',
           params: null
         };
         process.stdout.write(JSON.stringify(notification) + '\n');
+        mcpLog('debug', 'Sent heartbeat');
       } catch (error) {
         mcpLog('error', 'Error sending heartbeat:', error);
       }
@@ -272,13 +277,30 @@ export function handleMcpProtocol() {
     try {
       // Skip empty lines
       if (!line.trim()) {
+        mcpLog('debug', 'Skipping empty line');
         return;
       }
 
       // Log raw message for debugging
       mcpLog('debug', 'Raw message received:', line);
 
-      const message = JSON.parse(line);
+      let message;
+      try {
+        message = JSON.parse(line);
+      } catch (parseError: any) {
+        mcpLog('error', 'JSON parse error:', { error: parseError, line });
+        const parseErrorResponse = {
+          jsonrpc: '2.0',
+          error: {
+            code: -32700,
+            message: 'Parse error',
+            data: `Invalid JSON: ${parseError.message}`
+          },
+          id: null
+        };
+        process.stdout.write(JSON.stringify(parseErrorResponse) + '\n');
+        return;
+      }
       
       // Validate message structure
       if (!message || typeof message !== 'object') {
@@ -299,16 +321,16 @@ export function handleMcpProtocol() {
       await handleMcpMessage(message);
     } catch (error) {
       mcpLog('error', 'Error processing message:', { error, line });
-      const parseError = {
+      const errorResponse = {
         jsonrpc: '2.0',
         error: {
           code: -32700,
-          message: 'Parse error',
+          message: 'Message processing error',
           data: error instanceof Error ? error.message : String(error)
         },
         id: null
       };
-      process.stdout.write(JSON.stringify(parseError) + '\n');
+      process.stdout.write(JSON.stringify(errorResponse) + '\n');
     }
   });
 
