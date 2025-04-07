@@ -6,7 +6,7 @@ interface McpMessage {
   jsonrpc: string;
   method: string;
   params?: any;
-  id?: number;
+  id?: number | null;
 }
 
 interface Tool {
@@ -86,7 +86,7 @@ async function handleMcpMessage(message: McpMessage) {
     }
   }];
 
-  const handlers: Record<string, (params: any, id: number) => Promise<any>> = {
+  const handlers: Record<string, (params: any, id: number | null) => Promise<any>> = {
     'initialize': async (params, id) => {
       // Initialize database schema on first connection
       await initSchema();
@@ -97,7 +97,7 @@ async function handleMcpMessage(message: McpMessage) {
           protocolVersion: '2024-11-05',
           serverInfo: {
             name: '@audit-llm/server',
-            version: process.env.npm_package_version || '1.0.19'
+            version: '1.1.3'
           },
           capabilities: {
             tools: true,
@@ -192,29 +192,32 @@ async function handleMcpMessage(message: McpMessage) {
   try {
     const handler = handlers[message.method];
     if (!handler) {
-      return {
+      const response = {
         jsonrpc: '2.0',
         error: {
           code: -32601,
           message: `Method not found: ${message.method}`
         },
-        id: message.id || 0
+        id: message.id || null
       };
+      process.stdout.write(JSON.stringify(response) + '\n');
+      return;
     }
 
-    const response = await handler(message.params, typeof message.id === 'number' ? message.id : 0);
-    console.log(JSON.stringify(response));
+    const response = await handler(message.params, typeof message.id === 'number' ? message.id : null);
+    process.stdout.write(JSON.stringify(response) + '\n');
   } catch (error) {
     mcpLog('error', 'Error handling MCP message:', error);
-    console.log(JSON.stringify({
+    const errorResponse = {
       jsonrpc: '2.0',
       error: {
         code: -32000,
         message: 'Internal error',
         data: error instanceof Error ? error.message : String(error)
       },
-      id: message.id || 0
-    }));
+      id: message.id || null
+    };
+    process.stdout.write(JSON.stringify(errorResponse) + '\n');
   }
 }
 
@@ -222,7 +225,8 @@ export function handleMcpProtocol() {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
-    terminal: false
+    terminal: false,
+    crlfDelay: Infinity
   });
 
   mcpLog('info', 'Starting in MCP mode via stdin/stdout');
@@ -244,18 +248,28 @@ export function handleMcpProtocol() {
   process.on('SIGTERM', cleanup);
   process.on('SIGINT', cleanup);
 
+  // Keep the connection alive
+  const heartbeat = setInterval(() => {
+    if (!isShuttingDown) {
+      process.stdout.write('\n');  // Keep the connection alive
+    }
+  }, 30000);  // Send heartbeat every 30 seconds
+
   // Handle MCP messages
   rl.on('line', async (line) => {
     if (isShuttingDown) return;
 
     try {
+      // Skip empty lines (used for heartbeat)
+      if (!line.trim()) return;
+
       const message = JSON.parse(line);
       if (typeof message === 'object' && message !== null) {
         await handleMcpMessage(message);
       }
     } catch (error) {
       mcpLog('error', 'Error processing message:', error);
-      console.log(JSON.stringify({
+      const parseError = {
         jsonrpc: '2.0',
         error: {
           code: -32700,
@@ -263,12 +277,24 @@ export function handleMcpProtocol() {
           data: error instanceof Error ? error.message : String(error)
         },
         id: null
-      }));
+      };
+      process.stdout.write(JSON.stringify(parseError) + '\n');
     }
   });
 
   // Handle stdin end
   rl.on('close', async () => {
+    clearInterval(heartbeat);
     await cleanup();
   });
+
+  // Handle errors
+  rl.on('error', async (error) => {
+    mcpLog('error', 'Stream error:', error);
+    clearInterval(heartbeat);
+    await cleanup();
+  });
+
+  // Keep the process running
+  process.stdin.resume();
 } 

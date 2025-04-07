@@ -13,6 +13,9 @@ A server for auditing and logging LLM interactions, supporting both HTTP API and
 - Graceful shutdown handling
 - TypeScript support
 - Comprehensive test suite
+- Response caching for improved performance
+- Robust connection management
+- Automatic schema initialization
 
 ## Installation
 
@@ -129,6 +132,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Version History
 
+- 1.1.3 - Added response caching, improved connection stability, enhanced MCP protocol handling
+- 1.1.2 - Fixed MCP protocol initialization and binary execution
 - 1.1.1 - Improved error handling, fixed HTTP endpoints, enhanced test coverage
 - 1.1.0 - Added HTTP mode support
 - 1.0.19 - Initial public release
