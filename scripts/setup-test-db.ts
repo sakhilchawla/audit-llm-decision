@@ -1,5 +1,7 @@
-import { Client } from 'pg';
+import pkg from 'pg';
 import dotenv from 'dotenv';
+
+const { Client } = pkg;
 
 // Load test environment variables
 dotenv.config({ path: '.env.test' });
@@ -38,13 +40,6 @@ async function setupTestDatabase() {
   } finally {
     await client.end();
   }
-}
-
-// Run setup if this script is run directly
-if (require.main === module) {
-  setupTestDatabase()
-    .then(() => process.exit(0))
-    .catch(() => process.exit(1));
 }
 
 export { setupTestDatabase }; 

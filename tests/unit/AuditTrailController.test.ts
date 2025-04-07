@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { AuditTrailControllerTestHelper } from '../helpers/AuditTrailControllerTestHelper';
+import { jest } from '@jest/globals';
 
 describe('AuditTrailController', () => {
   let mockRequest: Partial<Request>;
@@ -23,8 +24,8 @@ describe('AuditTrailController', () => {
       }
     };
     mockResponse = {
-      json: mockJson,
-      status: mockStatus
+      json: mockJson as Response['json'],
+      status: mockStatus as Response['status']
     };
   });
 

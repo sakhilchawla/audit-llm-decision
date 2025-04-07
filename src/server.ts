@@ -10,11 +10,19 @@ import { SchemaController } from './controllers/SchemaController.js';
 import { pool, testConnection, initPool } from './db.js';
 import dotenv from 'dotenv';
 import { URL, fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
+import { handleMcpProtocol as mcpProtocolHandler } from './mcp.js';
 
-// Get current file path in ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Get current file path in a way that works in both ESM and CommonJS
+const getDirPath = () => {
+  try {
+    return dirname(fileURLToPath(import.meta.url));
+  } catch (e) {
+    return process.cwd();
+  }
+};
+
+const currentDirPath = getDirPath();
 
 // Load environment variables
 dotenv.config();
@@ -84,134 +92,97 @@ interface McpError {
 
 // MCP method handlers
 const mcpHandlers: {
-  [key: string]: (params: any, id: number) => McpResponse;
+  [key: string]: (params: any, id: number) => Promise<McpResponse>;
 } = {
-  'initialize': (params: any, id: number) => ({
+  'initialize': async (params: any, id: number) => ({
     jsonrpc: '2.0',
     result: {
       protocolVersion: '2024-11-05',
       serverInfo: {
         name: '@audit-llm/server',
-        version: process.env.npm_package_version || '1.0.16'
+        version: process.env.npm_package_version || '1.0.20'
       },
       capabilities: {}
     },
     id
   }),
-  'resources/list': (params: any, id: number) => ({
+  'resources/list': async (params: any, id: number) => ({
     jsonrpc: '2.0',
     result: {
       resources: []
     },
     id
   }),
-  'prompts/list': (params: any, id: number) => ({
+  'prompts/list': async (params: any, id: number) => ({
     jsonrpc: '2.0',
     result: {
       prompts: []
     },
     id
   }),
-  'tools/list': (params: any, id: number) => ({
+  'tools/list': async (params: any, id: number) => ({
     jsonrpc: '2.0',
     result: {
       tools: []
     },
     id
   }),
-  'heartbeat': (params: any, id: number) => ({
+  'heartbeat': async (params: any, id: number) => ({
     jsonrpc: '2.0',
     result: null,
     id
-  })
-};
-
-const handleMcpProtocol = () => {
-  let initialized = false;
-  let lastHeartbeat = Date.now();
-
-  // Keep the process alive
-  const interval = setInterval(() => {
-    const now = Date.now();
-    if (now - lastHeartbeat > 60000) {
-      mcpLog('info', 'No heartbeat received in 60 seconds, but keeping server alive');
-    }
-  }, 30000);
-
-  // Handle process termination
-  const cleanup = async () => {
-    clearInterval(interval);
-    mcpLog('info', 'Shutting down gracefully...');
-    await stopServer();
-    process.exit(0);
-  };
-
-  process.on('SIGTERM', cleanup);
-  process.on('SIGINT', cleanup);
-
-  // Handle stdin
-  process.stdin.on('data', (data) => {
+  }),
+  'interaction/log': async (params: any, id: number) => {
+    mcpLog('info', 'Logging interaction:', params);
     try {
-      const messages = data.toString().trim().split('\n');
-      
-      for (const messageStr of messages) {
-        if (!messageStr.trim()) continue;
-        
-        const message: McpRequest = JSON.parse(messageStr);
-        
-        // Handle initialization
-        if (message.method === 'initialize') {
-          initialized = true;
-        }
+      // Format the log entry
+      const logEntry = {
+        prompt: params.prompt,
+        response: params.response,
+        model_type: params.modelType,
+        model_version: params.modelVersion,
+        inferences: params.inferences || null,
+        decision_path: params.decisionPath || null,
+        final_decision: params.finalDecision || null,
+        confidence: params.confidence || null,
+        metadata: params.metadata || {},
+        created_at: new Date().toISOString()
+      };
 
-        // Update heartbeat timestamp for any message
-        lastHeartbeat = Date.now();
+      // Insert into database
+      const result = await pool.query(
+        `INSERT INTO model_interactions 
+        (prompt, response, model_type, model_version, inferences, decision_path, final_decision, confidence, metadata, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING id, created_at`,
+        [
+          logEntry.prompt,
+          logEntry.response,
+          logEntry.model_type,
+          logEntry.model_version,
+          logEntry.inferences,
+          logEntry.decision_path,
+          logEntry.final_decision,
+          logEntry.confidence,
+          logEntry.metadata,
+          logEntry.created_at
+        ]
+      );
 
-        // Handle notifications
-        if (message.method.startsWith('notifications/')) {
-          return;
-        }
-
-        // Handle methods with response
-        if (message.id !== undefined) {
-          const handler = mcpHandlers[message.method];
-          if (handler) {
-            const response = handler(message.params, message.id);
-            process.stdout.write(JSON.stringify(response) + '\n');
-          } else {
-            const error: McpError = {
-              jsonrpc: '2.0',
-              error: {
-                code: -32601,
-                message: `Method ${message.method} not found`
-              },
-              id: message.id
-            };
-            process.stdout.write(JSON.stringify(error) + '\n');
-          }
-        }
-      }
-    } catch (err) {
-      // Handle parse errors
-      if (err instanceof SyntaxError) {
-        mcpLog('error', 'Invalid JSON received:', { data: data.toString() });
-        return;
-      }
-      
-      mcpLog('error', 'Error handling MCP message:', err);
+      mcpLog('info', 'Successfully logged interaction to database', { id: result.rows[0].id });
+      return {
+        jsonrpc: '2.0',
+        result: {
+          id: result.rows[0].id,
+          created_at: result.rows[0].created_at
+        },
+        id
+      };
+    } catch (error) {
+      mcpLog('error', 'Failed to log interaction:', error);
+      throw error;
     }
-  });
-
-  // Handle stdin end
-  process.stdin.on('end', () => {
-    mcpLog('info', 'stdin stream ended');
-    cleanup();
-  });
-
-  // Handle stdin errors
-  process.stdin.on('error', (err) => {
-    mcpLog('error', 'stdin stream error:', err);
-  });
+  }
 };
 
 // Check if running in CLI mode
@@ -223,7 +194,11 @@ if (isDirectExecution && !connectionString) {
 // Parse connection string if provided
 if (connectionString) {
   try {
-    const dbUrl = new URL(connectionString);
+    // Ensure the connection string is properly formatted
+    const sanitizedConnectionString = connectionString.replace(/\s/g, '');
+    const dbUrl = new URL(sanitizedConnectionString);
+    
+    // Extract and decode components
     process.env.DB_USER = decodeURIComponent(dbUrl.username);
     process.env.DB_PASSWORD = decodeURIComponent(dbUrl.password);
     process.env.DB_HOST = dbUrl.hostname;
@@ -234,8 +209,17 @@ if (connectionString) {
     const params = new URLSearchParams(dbUrl.search);
     const appName = params.get('application_name');
     if (appName) {
-      process.env.DB_APPLICATION_NAME = appName;
+      process.env.DB_APPLICATION_NAME = decodeURIComponent(appName);
     }
+
+    // Log connection details (without sensitive info)
+    mcpLog('info', 'Parsed connection string:', {
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT,
+      database: process.env.DB_NAME,
+      user: process.env.DB_USER,
+      application_name: process.env.DB_APPLICATION_NAME
+    });
 
     // Initialize pool with updated environment variables
     initPool();
@@ -258,11 +242,11 @@ if (!process.env.DB_APPLICATION_NAME) {
 mcpLog('info', 'Starting server', {
   environment: process.env.NODE_ENV,
   database: {
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    application_name: process.env.DB_APPLICATION_NAME
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  database: process.env.DB_NAME,
+  user: process.env.DB_USER,
+  application_name: process.env.DB_APPLICATION_NAME
   }
 });
 
@@ -377,11 +361,11 @@ export const startServer = async (port: number = Number(process.env.PORT) || 400
         mcpLog('info', `Attempting to start server on port ${currentPort}...`);
         server = app.listen(currentPort, () => {
           mcpLog('info', `MCP Logging Server running on port ${currentPort}`);
-          resolve();
-        });
+        resolve();
+      });
 
-        server.on('error', (error: any) => {
-          if (error.code === 'EADDRINUSE') {
+      server.on('error', (error: any) => {
+        if (error.code === 'EADDRINUSE') {
             mcpLog('info', `Port ${currentPort} is already in use, trying ${currentPort + 1}...`);
             server.close();
             tryPort(currentPort + 1);
@@ -414,14 +398,34 @@ export const startServer = async (port: number = Number(process.env.PORT) || 400
 
 // Start the server only if running directly
 if (isDirectExecution) {
-  mcpLog('info', `Starting server in ${process.env.NODE_ENV} mode...`);
-  // Initialize MCP protocol handler if running in MCP mode
-  if (process.env.DB_APPLICATION_NAME?.includes('claude_desktop') || 
-      process.env.DB_APPLICATION_NAME?.includes('cursor_mcp')) {
-    handleMcpProtocol();
-  }
-  startServer().catch((error) => {
-    mcpLog('error', 'Server startup failed:', error);
+  const startApp = async () => {
+    mcpLog('info', `Starting server in ${process.env.NODE_ENV} mode...`);
+    const isMcpMode = process.env.DB_APPLICATION_NAME?.includes('claude_desktop') || 
+        process.env.DB_APPLICATION_NAME?.includes('cursor_mcp');
+    mcpLog('info', `MCP mode: ${isMcpMode}`);
+    
+    try {
+      // Initialize database first
+      await initDB();
+      mcpLog('info', 'Database initialized successfully');
+      
+      if (isMcpMode) {
+        // Only initialize MCP protocol handler, no HTTP server needed
+        mcpLog('info', 'Starting in MCP mode via stdin/stdout');
+        mcpProtocolHandler();
+      } else {
+        // If not in MCP mode, start the HTTP server
+        mcpLog('info', 'Starting in HTTP mode');
+        await startServer();
+      }
+    } catch (error) {
+      mcpLog('error', 'Server startup failed:', error);
+      process.exit(1);
+    }
+  };
+
+  startApp().catch((error) => {
+    mcpLog('error', 'Server initialization failed:', error);
     process.exit(1);
   });
 } else {

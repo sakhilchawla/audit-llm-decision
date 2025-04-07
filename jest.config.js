@@ -11,6 +11,11 @@ export default {
       'ts-jest',
       {
         useESM: true,
+        tsconfig: {
+          allowJs: true,
+          module: 'ESNext',
+          moduleResolution: 'node'
+        }
       },
     ],
   },
@@ -25,5 +30,8 @@ export default {
   testTimeout: 30000,
   setupFilesAfterEnv: ['./tests/setup/jest.setup.ts'],
   detectOpenHandles: true,
-  forceExit: true
+  forceExit: true,
+  transformIgnorePatterns: [
+    'node_modules/(?!(ts-jest|@audit-llm)/)'
+  ]
 }; 

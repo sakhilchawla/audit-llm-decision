@@ -1,5 +1,7 @@
-import { Pool } from 'pg';
+import pkg from 'pg';
 import dotenv from 'dotenv';
+
+const { Pool } = pkg;
 
 // Load test environment variables
 dotenv.config({ path: '.env.test' });
@@ -14,7 +16,7 @@ jest.mock('pg', () => {
     connect: jest.fn(),
     end: jest.fn(),
   };
-  return { Pool: jest.fn(() => mPool) };
+  return { default: { Pool: jest.fn(() => mPool) } };
 });
 
 // Clean up after all tests

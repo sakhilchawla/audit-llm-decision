@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { app } from '../../src/server';
 import { pool } from '../../src/db';
+import { jest, expect, describe, it, beforeAll } from '@jest/globals';
 
 describe('API Integration Tests', () => {
   beforeAll(async () => {
