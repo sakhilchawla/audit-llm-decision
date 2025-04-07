@@ -97,7 +97,7 @@ async function handleMcpMessage(message: McpMessage) {
           protocolVersion: '2024-11-05',
           serverInfo: {
             name: '@audit-llm/server',
-            version: '1.1.3'
+            version: '1.1.4'
           },
           capabilities: {
             tools: true,
@@ -239,36 +239,66 @@ export function handleMcpProtocol() {
     isShuttingDown = true;
 
     mcpLog('info', 'Shutting down gracefully...');
+    clearInterval(heartbeat);
     rl.close();
     await pool.end();
     mcpLog('info', 'Server stopped and database connection closed');
-    process.exit(0);
   };
 
   process.on('SIGTERM', cleanup);
   process.on('SIGINT', cleanup);
 
-  // Keep the connection alive
+  // Keep the connection alive with a proper JSON-RPC notification
   const heartbeat = setInterval(() => {
     if (!isShuttingDown) {
-      process.stdout.write('\n');  // Keep the connection alive
+      try {
+        // Send a proper JSON-RPC notification instead of newline
+        const notification = {
+          jsonrpc: '2.0',
+          method: 'server/heartbeat',
+          params: null
+        };
+        process.stdout.write(JSON.stringify(notification) + '\n');
+      } catch (error) {
+        mcpLog('error', 'Error sending heartbeat:', error);
+      }
     }
-  }, 30000);  // Send heartbeat every 30 seconds
+  }, 30000);
 
   // Handle MCP messages
   rl.on('line', async (line) => {
     if (isShuttingDown) return;
 
     try {
-      // Skip empty lines (used for heartbeat)
-      if (!line.trim()) return;
+      // Skip empty lines
+      if (!line.trim()) {
+        return;
+      }
+
+      // Log raw message for debugging
+      mcpLog('debug', 'Raw message received:', line);
 
       const message = JSON.parse(line);
-      if (typeof message === 'object' && message !== null) {
-        await handleMcpMessage(message);
+      
+      // Validate message structure
+      if (!message || typeof message !== 'object') {
+        throw new Error('Invalid message format: not an object');
       }
+      
+      if (message.jsonrpc !== '2.0') {
+        throw new Error('Invalid message format: missing or invalid jsonrpc version');
+      }
+      
+      if (typeof message.method !== 'string') {
+        throw new Error('Invalid message format: missing or invalid method');
+      }
+
+      // Log parsed message for debugging
+      mcpLog('debug', 'Parsed message:', message);
+
+      await handleMcpMessage(message);
     } catch (error) {
-      mcpLog('error', 'Error processing message:', error);
+      mcpLog('error', 'Error processing message:', { error, line });
       const parseError = {
         jsonrpc: '2.0',
         error: {
@@ -284,14 +314,13 @@ export function handleMcpProtocol() {
 
   // Handle stdin end
   rl.on('close', async () => {
-    clearInterval(heartbeat);
+    mcpLog('info', 'Stdin closed, cleaning up');
     await cleanup();
   });
 
   // Handle errors
   rl.on('error', async (error) => {
     mcpLog('error', 'Stream error:', error);
-    clearInterval(heartbeat);
     await cleanup();
   });
 
