@@ -1,97 +1,75 @@
-import pkg from 'pg';
-const { Pool } = pkg;
-import dotenv from 'dotenv';
+import pg from 'pg';
+import { mcpLog } from './utils/logging.js';
 
-// Load environment variables
-dotenv.config();
+const { Pool } = pg;
 
-// MCP logging function
-const mcpLog = (level: 'info' | 'error', message: string, data?: any) => {
-  const logMessage = {
-    jsonrpc: '2.0',
-    method: 'log',
-    params: {
-      level,
-      message,
-      ...(data && { data })
-    }
-  };
-  console.log(JSON.stringify(logMessage));
-};
-
-// Create a function to get the pool configuration
-const getPoolConfig = () => ({
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+// Create a new pool instance using individual environment variables
+export const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'mcp_audit',
-  ssl: process.env.DB_SSL === 'true' ? {
-    rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true'
-  } : false,
-  max: parseInt(process.env.DB_MAX_POOL_SIZE || '20'),
-  idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '10000'),
-  connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '0'),
-  application_name: process.env.DB_APPLICATION_NAME
+  database: process.env.DB_NAME || 'audit_llm',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres',
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// Create the connection pool
-let pool: pkg.Pool;
+// Handle pool errors
+pool.on('error', (err) => {
+  mcpLog('error', 'Unexpected error on idle client:', err);
+  // Don't exit, let the application handle the error
+});
 
-// Initialize pool with current environment variables
-const initPool = () => {
-  if (pool) {
-    pool.end();
-  }
-  pool = new Pool(getPoolConfig());
-
-  // Log pool events
-  pool.on('connect', () => {
-    mcpLog('info', 'New client connected to database');
-  });
-
-  pool.on('error', (err) => {
-    mcpLog('error', 'Unexpected error on idle client', err);
-    process.exit(-1);
-  });
-
-  return pool;
-};
-
-// Test database connection
-const testConnection = async () => {
+// Test the database connection
+export async function testConnection(): Promise<boolean> {
   try {
-    // Ensure pool is initialized with latest environment variables
-    initPool();
     const client = await pool.connect();
-    const result = await client.query('SELECT version()');
-    mcpLog('info', 'Successfully connected to database', {
-      version: result.rows[0].version,
-      config: {
-        host: process.env.DB_HOST,
-        port: process.env.DB_PORT,
-        database: process.env.DB_NAME,
-        user: process.env.DB_USER,
-        application_name: process.env.DB_APPLICATION_NAME
-      }
-    });
+    await client.query('SELECT NOW()');
     client.release();
+    mcpLog('info', 'Database connection successful');
     return true;
-  } catch (err: any) {
-    mcpLog('error', 'Error connecting to the database:', {
-      error: err.message,
-      code: err.code,
-      detail: err.detail,
-      config: {
-        host: process.env.DB_HOST,
-        port: process.env.DB_PORT,
-        database: process.env.DB_NAME,
-        user: process.env.DB_USER,
-        application_name: process.env.DB_APPLICATION_NAME
-      }
-    });
+  } catch (error) {
+    mcpLog('error', 'Database connection failed:', error);
     return false;
   }
-};
+}
 
-export { pool, testConnection, initPool }; 
+// Initialize the database schema and tables
+export async function initSchema(): Promise<void> {
+  try {
+    // Create schema if it doesn't exist
+    const schema = process.env.DB_SCHEMA || 'public';
+    await pool.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
+    mcpLog('info', `Database initialized with schema: ${schema}`);
+
+    // Set search path
+    await pool.query(`SET search_path TO ${schema}`);
+
+    // Create table if it doesn't exist
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS model_interactions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        prompt TEXT NOT NULL,
+        response TEXT NOT NULL,
+        model_type VARCHAR(255) NOT NULL,
+        model_version VARCHAR(255) NOT NULL,
+        inferences JSONB,
+        decision_path JSONB,
+        final_decision TEXT,
+        confidence FLOAT,
+        metadata JSONB NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL
+      )
+    `);
+    mcpLog('info', 'Database table created');
+
+    // Create indexes
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_model_interactions_model_type ON model_interactions(model_type);
+      CREATE INDEX IF NOT EXISTS idx_model_interactions_created_at ON model_interactions(created_at DESC);
+    `);
+    mcpLog('info', 'Database indexes created');
+  } catch (error: any) {
+    mcpLog('error', 'Database initialization failed:', { error: error.message, stack: error.stack });
+    throw error;
+  }
+} 

@@ -4,18 +4,25 @@ const mcpLogger = debug('mcp');
 
 type LogLevel = 'info' | 'error' | 'debug' | 'warn';
 
-export function mcpLog(level: LogLevel, message: string, ...args: any[]) {
-  const timestamp = new Date().toISOString();
-  const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-  
-  if (args.length > 0) {
-    mcpLogger(logMessage, ...args);
+export function mcpLog(level: LogLevel, message: string, data?: any) {
+  const isMcpMode = process.argv.includes('--mcp');
+
+  if (isMcpMode) {
+    // MCP mode: JSON-RPC format
+    const logMessage = {
+      jsonrpc: '2.0',
+      method: 'log',
+      params: {
+        level,
+        message,
+        ...(data && { data })
+      }
+    };
+    console.log(JSON.stringify(logMessage));
   } else {
-    mcpLogger(logMessage);
-  }
-  
-  // Also log to stderr for error level
-  if (level === 'error') {
-    console.error(logMessage, ...args);
+    // HTTP mode: Regular logging
+    const timestamp = new Date().toISOString();
+    const logData = data ? ` ${JSON.stringify(data)}` : '';
+    console.log(`[${timestamp}] ${level.toUpperCase()}: ${message}${logData}`);
   }
 } 

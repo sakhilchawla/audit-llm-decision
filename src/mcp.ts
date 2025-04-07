@@ -1,6 +1,6 @@
 import { createInterface } from 'readline';
 import { mcpLog } from './utils/logging.js';
-import { pool } from './db.js';
+import { pool, initSchema } from './db.js';
 
 interface McpMessage {
   jsonrpc: string;
@@ -21,6 +21,22 @@ interface Tool {
     required: string[];
   };
 }
+
+// Cache responses for frequently requested methods
+const cachedResponses = {
+  'resources/list': {
+    jsonrpc: '2.0',
+    result: {
+      resources: []
+    }
+  },
+  'prompts/list': {
+    jsonrpc: '2.0',
+    result: {
+      prompts: []
+    }
+  }
+};
 
 async function handleMcpMessage(message: McpMessage) {
   const tools: Tool[] = [{
@@ -70,25 +86,28 @@ async function handleMcpMessage(message: McpMessage) {
     }
   }];
 
-  mcpLog('info', 'Handling MCP message:', message);
-
   const handlers: Record<string, (params: any, id: number) => Promise<any>> = {
-    'initialize': async (params, id) => ({
-      jsonrpc: '2.0',
-      result: {
-        protocolVersion: '2024-11-05',
-        serverInfo: {
-          name: '@audit-llm/server',
-          version: process.env.npm_package_version || '1.0.20'
+    'initialize': async (params, id) => {
+      // Initialize database schema on first connection
+      await initSchema();
+      
+      return {
+        jsonrpc: '2.0',
+        result: {
+          protocolVersion: '2024-11-05',
+          serverInfo: {
+            name: '@audit-llm/server',
+            version: process.env.npm_package_version || '1.0.19'
+          },
+          capabilities: {
+            tools: true,
+            resources: true,
+            prompts: true
+          }
         },
-        capabilities: {
-          tools: true,
-          resources: false,
-          prompts: false
-        }
-      },
-      id
-    }),
+        id
+      };
+    },
     'tools/list': async (params, id) => ({
       jsonrpc: '2.0',
       result: {
@@ -97,17 +116,11 @@ async function handleMcpMessage(message: McpMessage) {
       id
     }),
     'resources/list': async (params, id) => ({
-      jsonrpc: '2.0',
-      result: {
-        resources: []
-      },
+      ...cachedResponses['resources/list'],
       id
     }),
     'prompts/list': async (params, id) => ({
-      jsonrpc: '2.0',
-      result: {
-        prompts: []
-      },
+      ...cachedResponses['prompts/list'],
       id
     }),
     'heartbeat': async (params, id) => ({
@@ -163,17 +176,46 @@ async function handleMcpMessage(message: McpMessage) {
         };
       } catch (error) {
         mcpLog('error', 'Failed to log interaction:', error);
-        throw error;
+        return {
+          jsonrpc: '2.0',
+          error: {
+            code: -32000,
+            message: 'Failed to log interaction',
+            data: error instanceof Error ? error.message : String(error)
+          },
+          id
+        };
       }
     }
   };
 
-  const handler = handlers[message.method];
-  if (!handler) {
-    throw new Error(`Unknown method: ${message.method}`);
-  }
+  try {
+    const handler = handlers[message.method];
+    if (!handler) {
+      return {
+        jsonrpc: '2.0',
+        error: {
+          code: -32601,
+          message: `Method not found: ${message.method}`
+        },
+        id: message.id || 0
+      };
+    }
 
-  return await handler(message.params, typeof message.id === 'number' ? message.id : 0);
+    const response = await handler(message.params, typeof message.id === 'number' ? message.id : 0);
+    console.log(JSON.stringify(response));
+  } catch (error) {
+    mcpLog('error', 'Error handling MCP message:', error);
+    console.log(JSON.stringify({
+      jsonrpc: '2.0',
+      error: {
+        code: -32000,
+        message: 'Internal error',
+        data: error instanceof Error ? error.message : String(error)
+      },
+      id: message.id || 0
+    }));
+  }
 }
 
 export function handleMcpProtocol() {
@@ -183,45 +225,50 @@ export function handleMcpProtocol() {
     terminal: false
   });
 
-  mcpLog('info', 'Initializing MCP protocol handler via stdin/stdout');
+  mcpLog('info', 'Starting in MCP mode via stdin/stdout');
 
+  // Handle process termination
+  let isShuttingDown = false;
+
+  const cleanup = async () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    mcpLog('info', 'Shutting down gracefully...');
+    rl.close();
+    await pool.end();
+    mcpLog('info', 'Server stopped and database connection closed');
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', cleanup);
+  process.on('SIGINT', cleanup);
+
+  // Handle MCP messages
   rl.on('line', async (line) => {
-    let parsedMessage: McpMessage | undefined;
-    
+    if (isShuttingDown) return;
+
     try {
-      const parsed = JSON.parse(line);
-      if (typeof parsed === 'object' && parsed !== null) {
-        parsedMessage = parsed as McpMessage;
-        mcpLog('info', 'Received MCP message:', parsedMessage);
-
-        if (!parsedMessage.jsonrpc || parsedMessage.jsonrpc !== '2.0' || !parsedMessage.method) {
-          throw new Error('Invalid JSON-RPC message');
-        }
-
-        const response = await handleMcpMessage(parsedMessage);
-        if (response) {
-          mcpLog('info', 'Sending MCP response:', response);
-          process.stdout.write(JSON.stringify(response) + '\n');
-        }
-      } else {
-        throw new Error('Invalid message format');
+      const message = JSON.parse(line);
+      if (typeof message === 'object' && message !== null) {
+        await handleMcpMessage(message);
       }
     } catch (error) {
-      mcpLog('error', 'Error handling MCP message:', error instanceof Error ? error.message : String(error));
-      const errorResponse = {
+      mcpLog('error', 'Error processing message:', error);
+      console.log(JSON.stringify({
         jsonrpc: '2.0',
         error: {
-          code: -32000,
-          message: error instanceof Error ? error.message : 'Internal error'
+          code: -32700,
+          message: 'Parse error',
+          data: error instanceof Error ? error.message : String(error)
         },
-        id: parsedMessage?.id ?? null
-      };
-      process.stdout.write(JSON.stringify(errorResponse) + '\n');
+        id: null
+      }));
     }
   });
 
-  rl.on('close', () => {
-    mcpLog('info', 'MCP connection closed');
-    process.exit(0);
+  // Handle stdin end
+  rl.on('close', async () => {
+    await cleanup();
   });
 } 
