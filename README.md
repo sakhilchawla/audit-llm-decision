@@ -132,6 +132,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Version History
 
+### 1.1.7
+- Improved MCP protocol handling with direct stdin/stdout
+- Enhanced message parsing and validation
+- Added heartbeat tracking with timestamps
+- Better error handling and debug logging
+- Fixed JSON parsing issues
+
 ### 1.1.6
 - Fixed JSON parsing and validation
 - Improved error handling and logging

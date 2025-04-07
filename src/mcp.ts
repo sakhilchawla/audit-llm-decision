@@ -1,4 +1,3 @@
-import { createInterface } from 'readline';
 import { mcpLog } from './utils/logging.js';
 import { pool, initSchema } from './db.js';
 
@@ -97,7 +96,7 @@ async function handleMcpMessage(message: McpMessage) {
           protocolVersion: '2024-11-05',
           serverInfo: {
             name: '@audit-llm/server',
-            version: '1.1.6'
+            version: '1.1.7'
           },
           capabilities: {
             tools: true,
@@ -222,18 +221,11 @@ async function handleMcpMessage(message: McpMessage) {
 }
 
 export function handleMcpProtocol() {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: false,
-    crlfDelay: Infinity
-  });
-
   mcpLog('info', 'Starting in MCP mode via stdin/stdout');
 
   // Handle process termination
   let isShuttingDown = false;
-  let messageBuffer = '';
+  let lastHeartbeat = Date.now();
 
   const cleanup = async () => {
     if (isShuttingDown) return;
@@ -241,7 +233,6 @@ export function handleMcpProtocol() {
 
     mcpLog('info', 'Shutting down gracefully...');
     clearInterval(heartbeat);
-    rl.close();
     await pool.end();
     mcpLog('info', 'Server stopped and database connection closed');
     process.exit(0);
@@ -258,6 +249,10 @@ export function handleMcpProtocol() {
   const heartbeat = setInterval(() => {
     if (!isShuttingDown) {
       try {
+        const now = Date.now();
+        if (now - lastHeartbeat > 60000) {
+          mcpLog('info', 'No heartbeat received in 60 seconds, but keeping server alive');
+        }
         const notification = {
           jsonrpc: '2.0',
           method: 'server/heartbeat',
@@ -270,58 +265,72 @@ export function handleMcpProtocol() {
     }
   }, 30000);
 
-  // Handle MCP messages
-  rl.on('line', async (line) => {
+  // Handle stdin
+  process.stdin.on('data', (data) => {
     if (isShuttingDown) return;
 
     try {
-      // Skip empty lines
-      if (!line.trim()) {
-        mcpLog('debug', 'Skipping empty line');
-        return;
+      const messages = data.toString().trim().split('\n');
+      
+      for (const messageStr of messages) {
+        if (!messageStr.trim()) {
+          mcpLog('debug', 'Skipping empty line');
+          continue;
+        }
+
+        // Log raw message for debugging
+        mcpLog('debug', 'Raw message received:', { message: messageStr });
+
+        // Try to parse the message
+        let message;
+        try {
+          message = JSON.parse(messageStr);
+        } catch (parseError: any) {
+          mcpLog('error', 'JSON parse error:', { error: parseError, message: messageStr });
+          const parseErrorResponse = {
+            jsonrpc: '2.0',
+            error: {
+              code: -32700,
+              message: 'Parse error',
+              data: `Invalid JSON: ${parseError.message}`
+            },
+            id: null
+          };
+          process.stdout.write(JSON.stringify(parseErrorResponse) + '\n');
+          continue;
+        }
+
+        // Update heartbeat timestamp for any valid message
+        lastHeartbeat = Date.now();
+
+        // Validate message structure
+        if (!message || typeof message !== 'object') {
+          throw new Error('Invalid message format: not an object');
+        }
+
+        if (message.jsonrpc !== '2.0') {
+          throw new Error('Invalid message format: missing or invalid jsonrpc version');
+        }
+
+        if (typeof message.method !== 'string') {
+          throw new Error('Invalid message format: missing or invalid method');
+        }
+
+        // Handle notifications
+        if (message.method.startsWith('notifications/')) {
+          continue;
+        }
+
+        // Log parsed message for debugging
+        mcpLog('debug', 'Parsed message:', { message });
+
+        // Handle the message
+        handleMcpMessage(message).catch(error => {
+          mcpLog('error', 'Error in message handler:', error);
+        });
       }
-
-      // Log raw message for debugging
-      mcpLog('debug', 'Raw message received:', { line });
-
-      // Try to parse the message
-      let message;
-      try {
-        message = JSON.parse(line);
-      } catch (parseError: any) {
-        mcpLog('error', 'JSON parse error:', { error: parseError, line });
-        const parseErrorResponse = {
-          jsonrpc: '2.0',
-          error: {
-            code: -32700,
-            message: 'Parse error',
-            data: `Invalid JSON: ${parseError.message}`
-          },
-          id: null
-        };
-        process.stdout.write(JSON.stringify(parseErrorResponse) + '\n');
-        return;
-      }
-
-      // Validate message structure
-      if (!message || typeof message !== 'object') {
-        throw new Error('Invalid message format: not an object');
-      }
-
-      if (message.jsonrpc !== '2.0') {
-        throw new Error('Invalid message format: missing or invalid jsonrpc version');
-      }
-
-      if (typeof message.method !== 'string') {
-        throw new Error('Invalid message format: missing or invalid method');
-      }
-
-      // Log parsed message for debugging
-      mcpLog('debug', 'Parsed message:', { message });
-
-      await handleMcpMessage(message);
     } catch (error) {
-      mcpLog('error', 'Error processing message:', { error, line });
+      mcpLog('error', 'Error processing message:', { error, data: data.toString() });
       const errorResponse = {
         jsonrpc: '2.0',
         error: {
@@ -336,15 +345,15 @@ export function handleMcpProtocol() {
   });
 
   // Handle stdin end
-  rl.on('close', async () => {
-    mcpLog('info', 'Stdin closed, cleaning up');
-    await cleanup();
+  process.stdin.on('end', () => {
+    mcpLog('info', 'stdin stream ended');
+    cleanup();
   });
 
-  // Handle errors
-  rl.on('error', async (error) => {
-    mcpLog('error', 'Stream error:', error);
-    await cleanup();
+  // Handle stdin errors
+  process.stdin.on('error', (error) => {
+    mcpLog('error', 'stdin stream error:', error);
+    cleanup();
   });
 
   // Keep the process running
